@@ -1,0 +1,16 @@
+node_modules
+.svelte-kit
+build
+data
+.env
+.git
+*.md
+*.log
+.env.*
+
+# ...but the Dockerfile COPYs these two guides in, and the app reads them from
+# the working directory at runtime (readFileSync in computer-agent.ts and
+# police.ts). Without the negations the build fails: COPY cannot see a file the
+# context excluded.
+!GOOD_USE_GUIDE.md
+!COMPUTER_GUIDE.md

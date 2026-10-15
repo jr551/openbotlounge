@@ -1,0 +1,37 @@
+# Secret-scanner configuration.
+#
+# The test suite covers this app's own credential redaction, so it needs strings
+# that look exactly like live credentials: sk-live-LEAKED-123456,
+# sk-live-SUPERSECRET-123456, sk-test-secret-key-1234567890 and friends. None of
+# them are real — the names literally say "LEAKED", "SUPERSECRET" and "test" —
+# but a scanner cannot know that, and without this allowlist every run reports
+# them as findings and GitHub's push protection will block the first public push.
+#
+# The allowlist is deliberately narrow: it names the fabricated values instead of
+# excluding test files outright, so a real credential committed into a test would
+# still be caught.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Fabricated credential fixtures used to test secret redaction"
+regexTarget = "match"
+regexes = [
+  '''sk-test-secret-key-1234567890''',
+  '''sk-live-LEAKED-123456''',
+  '''sk-live-SUPERSECRET-123456''',
+  '''sk-provider-SECRET-999''',
+  '''sk-written-SECRET-777''',
+  '''sk-good-key-0001''',
+  '''sk-wrong-key-9999''',
+  '''sk-route-key-1234''',
+  '''sk-or-secret-9f8e7d''',
+  '''sk-or-issued-abc''',
+  '''sk-live-plugin-secret-42''',
+  '''sk-live-abcdef123456''',
+  '''sk-soak-secret''',
+  '''sk-offered-VALUE-9123456789''',
+  '''sk-live-do-not-print''',
+  '''relay-test-pw''',
+]

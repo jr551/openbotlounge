@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<!-- Without this the document decodes as windows-1252 and every ✕, em-dash
+		     and emoji in the templates mojibakes. -->
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+		<meta name="theme-color" content="#0e0e10" />
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+		<link rel="manifest" href="/manifest.webmanifest" />
+		<!-- Without this a browser requests /favicon.ico and logs a 404 on every load. -->
+		<link rel="icon" href="/icons/icon-192.png" type="image/png" />
+		<link rel="apple-touch-icon" href="/icons/icon-192.png" />
+		<title>OpenBotLounge</title>
+		<script>
+			// crypto.randomUUID is secure-context only (HTTPS or localhost). On a
+			// plain-HTTP LAN origin the browser leaves it undefined, so the chat
+			// composer throws before it can send. Polyfill it with a v4 UUID built
+			// from crypto.getRandomValues, which is available everywhere.
+			if (typeof crypto !== "undefined" && typeof crypto.randomUUID !== "function") {
+				crypto.randomUUID = function () {
+					const b = crypto.getRandomValues(new Uint8Array(16));
+					b[6] = (b[6] & 0x0f) | 0x40;
+					b[8] = (b[8] & 0x3f) | 0x80;
+					const h = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+					return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+				};
+			}
+		</script>
+		%sveltekit.head%
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div style="display: contents">%sveltekit.body%</div>
+	</body>
+</html>

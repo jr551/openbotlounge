@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Openbotlounge ad and tracker blocker",
+  "version": "1.0.0",
+  "description": "Blocks well-known advertising, tracking, audience-measurement and cookie-consent hosts on every bot machine.",
+  "permissions": [
+    "declarativeNetRequest"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "obl_ads",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  }
+}

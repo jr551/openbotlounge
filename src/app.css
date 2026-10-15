@@ -1,0 +1,139 @@
+:root {
+	--bg: #0e0e10;
+	--bg-raised: #1b1b1e;
+	--bg-hover: #232327;
+	--border: #2c2c30;
+	--text: #ececee;
+	--text-muted: #8a8a93;
+	--accent: #3a7bd5;
+	--bubble: #26262b;
+	--bubble-out: #2b5278;
+	--danger: #f26d6d;
+	/* Radius scale: --r-sm for small controls/inputs, --r-md for cards,
+	   tiles and bubbles, --r-lg for dialogs/large surfaces, --r-pill for
+	   fully rounded pills. */
+	--r-sm: 0.3rem;
+	--r-md: 0.55rem;
+	--r-lg: 0.9rem;
+	--r-pill: 999px;
+	font-family:
+		-apple-system,
+		BlinkMacSystemFont,
+		'Segoe UI',
+		'Helvetica Neue',
+		Helvetica,
+		Roboto,
+		Arial,
+		sans-serif;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+	background: var(--bg);
+	color: var(--text);
+	height: 100%;
+	/* An installed app that rubber-bands the whole page while the thread has
+	   its own scroller feels like a web page, not an app. iOS honours this on
+	   the document; the inner scrollers keep their own momentum. */
+	overscroll-behavior: none;
+}
+
+button {
+	font-family: inherit;
+}
+
+/* A textarea's intrinsic width (~20 cols) would otherwise hold the composer
+   row open and force horizontal overflow on narrow windows. */
+.composer textarea {
+	min-width: 0;
+}
+
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+::-webkit-scrollbar-thumb {
+	background: #333338;
+	border-radius: 4px;
+}
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+/* A bot's name written as plain text - "I talked to Pook" - gets a quiet
+   tint in that bot's own color: a soft wash, no border, no pill. The real
+   @mention keeps its bordered blue pill, so a name in prose never reads as
+   a ping. --nm is set inline by the nameMentions action. */
+.name-mention {
+	color: var(--nm, #9fd6a0);
+	background: color-mix(in srgb, var(--nm, #9fd6a0) 16%, transparent);
+	border-radius: var(--r-sm);
+	padding: 0 0.15em;
+}
+
+/*
+ * Whole-app themes: each overrides the same nine surface vars, nothing else.
+ * The shipped default needs no block — :root above carries it — and an empty
+ * chat.theme removes data-theme entirely so :root shows through unchanged.
+ */
+[data-theme='midnight'] {
+	--bg: #0a0e1a;
+	--bg-raised: #111832;
+	--bg-hover: #1a2342;
+	--border: #26305a;
+	--text: #e2e8f5;
+	--text-muted: #8b96b8;
+	--accent: #5b8cff;
+	--bubble: #161d38;
+	--bubble-out: #27407c;
+}
+[data-theme='forest'] {
+	--bg: #0c1410;
+	--bg-raised: #132019;
+	--bg-hover: #1b2e23;
+	--border: #294434;
+	--text: #e3efe6;
+	--text-muted: #8ba795;
+	--accent: #4ade80;
+	--bubble: #16241c;
+	--bubble-out: #1f4d33;
+}
+[data-theme='sunset'] {
+	--bg: #171019;
+	--bg-raised: #241722;
+	--bg-hover: #32202e;
+	--border: #4a2d42;
+	--text: #f3e7e4;
+	--text-muted: #a68f9c;
+	--accent: #fb923c;
+	--bubble: #2a1c28;
+	--bubble-out: #6b3a26;
+}
+[data-theme='lavender'] {
+	--bg: #14121c;
+	--bg-raised: #1e1a2c;
+	--bg-hover: #2a2440;
+	--border: #3d3358;
+	--text: #ede8fa;
+	--text-muted: #a296c4;
+	--accent: #c084fc;
+	--bubble: #221d36;
+	--bubble-out: #4a3670;
+}
+[data-theme='mono'] {
+	--bg: #111;
+	--bg-raised: #1a1a1a;
+	--bg-hover: #262626;
+	--border: #333;
+	--text: #f5f5f5;
+	--text-muted: #a3a3a3;
+	--accent: #e5e5e5;
+	--bubble: #1f1f1f;
+	--bubble-out: #3a3a3a;
+}

@@ -1,0 +1,41 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      # OpenRouter by default (sign in with OAuth, no key to paste). Any
+      # OpenAI-compatible endpoint works: xAI, Ollama, LM Studio, vLLM…
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://openrouter.ai/api/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      # Empty here means "use the app's default model" (DeepSeek v4.1 Flash).
+      LLM_MODEL: ${LLM_MODEL:-}
+      # Let the Test-connection button reach a local model server (loopback/LAN).
+      PROVIDER_TEST_ALLOW_PRIVATE: ${PROVIDER_TEST_ALLOW_PRIVATE:-false}
+      # Exa (exa.ai) key for the bots' search_web tool; optional.
+      EXA_API_KEY: ${EXA_API_KEY:-}
+      APP_PASSWORD: ${APP_PASSWORD:-}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      MAX_HISTORY_MESSAGES: ${MAX_HISTORY_MESSAGES:-0}
+      # How often the police round runs, in hours (default 12).
+      POLICE_INTERVAL_HOURS: ${POLICE_INTERVAL_HOURS:-12}
+      # Per-bot sandboxes (agent-infra/sandbox). Each bot gets a container with
+      # browser/shell/files/VSCode + a noVNC screen; idle ones auto-sleep.
+      SANDBOX_IMAGE: ${SANDBOX_IMAGE:-ghcr.io/agent-infra/sandbox:latest}
+      SANDBOX_API_KEY: ${SANDBOX_API_KEY:-}
+      SANDBOX_IDLE_MINUTES: ${SANDBOX_IDLE_MINUTES:-15}
+      SANDBOX_NETWORK: ${SANDBOX_NETWORK:-${COMPOSE_PROJECT_NAME:-openbotlounge}_default}
+      # ORIGIN: https://chat.example.com
+    volumes:
+      - chat-data:/data
+      # Lets the app start/stop per-bot sandbox containers.
+      - /var/run/docker.sock:/var/run/docker.sock
+    # The socket is root:root; the app runs as `node`, so without joining the
+    # socket's group every Docker call fails with EACCES and the sandbox (and
+    # its Wake button) silently does nothing.
+    group_add:
+      - "${DOCKER_GID:-0}"
+    restart: unless-stopped
+
+volumes:
+  chat-data:

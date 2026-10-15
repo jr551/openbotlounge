@@ -1,0 +1,9 @@
+node_modules
+.svelte-kit
+build
+builds/
+data
+.env
+# pi installs project packages here on first run (see .pi/settings.json)
+.pi/npm/
+.pi/git/

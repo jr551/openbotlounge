@@ -1,0 +1,9 @@
+# Project config for omp sessions in this repo.
+#
+# pi-memory is a devDependency, so `npm install` puts it in node_modules and
+# omp loads it as an extension package (its package.json `pi.extensions`
+# manifest is honored, and its @earendil-works/pi-* imports resolve to omp's
+# bundled copies). It gives the agent driving the bots a memory across
+# sessions; the bots keep their own via their remember/recall tools.
+extensions:
+  - ./node_modules/pi-memory
