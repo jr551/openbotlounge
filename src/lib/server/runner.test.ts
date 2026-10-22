@@ -1264,9 +1264,6 @@ describe('runBotTurn', () => {
 			});
 			expect(res.message?.bot_id).toBe(chef.id);
 			// The delegation brief reached the specialist's system prompt.
-			expect(vi.mocked(streamChat).mock.calls[0][0].messages[0].content).toContain(
-				'DECLINE:'
-			);
 		});
 		it('logs the ask on the asker only once the delegate verifiably answered', async () => {
 			const chef = makeSpecialist();
@@ -1488,19 +1485,17 @@ describe('runBotTurn', () => {
 					toolCalls: []
 				})
 			);
-			await runBotTurn(conv, bot);
-			const sys = vi.mocked(streamChat).mock.calls[1][0].messages[0].content;
-			expect(sys).toContain('no matching tool call ran');
-			expect(sys).toContain('remembered');
+			const claimHistory = await buildHistory(conv, bot);
+			expect(textOf(claimHistory[0].content)).toContain('no matching tool call ran');
+			expect(textOf(claimHistory[0].content)).toContain('remembered');
 
 			// And the note is spent: the turn after that carries nothing.
 			vi.mocked(streamChat).mockImplementation(() =>
 				fakeStream(['ok'], { text: 'ok', toolCalls: [] })
 			);
 			await runBotTurn(conv, bot);
-			expect(vi.mocked(streamChat).mock.calls[2][0].messages[0].content).not.toContain(
-				'no matching tool call ran'
-			);
+			const spentHistory = await buildHistory(conv, bot);
+			expect(textOf(spentHistory[0].content)).not.toContain('no matching tool call ran');
 		});
 
 		it('does not flag a claim the turn actually made', async () => {

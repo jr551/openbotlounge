@@ -40,11 +40,19 @@ import {
 	type Api,
 	type AssistantMessage,
 	type Context,
+	type JsonObject,
 	type Model,
 	type SimpleStreamOptions,
 	type TSchema,
+	type TranscriptContext,
 	type Usage
 } from '@earendil-works/pi-ai';
+import {
+	collapseSystemMessages,
+	getCurrentSystemPrompt,
+	getCurrentTools,
+	withoutInitialSystemMessage
+} from '@earendil-works/pi-ai/utils/transcript';
 import { parseOAuthSession, providerConfig } from './db';
 import { LOUNGE_PROVIDER_ID, loungeRuntime } from './pi-runtime';
 import { streamChat, textOf, type ChatMessage, type StreamResult, type ToolDef } from './llm';
@@ -205,15 +213,19 @@ export function toChatMessage(m: Context['messages'][number]): ChatMessage {
  */
 function loungeStream(
 	model: Model<Api>,
-	context: Context,
+	context: TranscriptContext,
 	options?: SimpleStreamOptions,
 	turnSignal?: AbortSignal
 ): AssistantMessageEventStream {
 	const stream = new AssistantMessageEventStream();
 	const messages: ChatMessage[] = [];
-	if (context.systemPrompt) messages.push({ role: 'system', content: context.systemPrompt });
-	for (const m of context.messages) messages.push(toChatMessage(m));
-	const tools: ToolDef[] = (context.tools ?? []).map((t) => ({
+	const collapsed = collapseSystemMessages(context);
+	const systemPrompt = getCurrentSystemPrompt(collapsed.messages);
+	if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
+	for (const m of withoutInitialSystemMessage([...collapsed.messages])) {
+		messages.push(toChatMessage(m));
+	}
+	const tools: ToolDef[] = getCurrentTools(collapsed.messages).map((t) => ({
 		type: 'function',
 		function: {
 			name: t.name,
@@ -270,11 +282,11 @@ function loungeStream(
 			const content: AssistantMessage['content'] = [];
 			if (result?.text) content.push({ type: 'text', text: result.text });
 			for (const call of result?.toolCalls ?? []) {
-				let args: Record<string, unknown> = {};
+				let args: JsonObject = {};
 				try {
 					const parsed: unknown = JSON.parse(call.function.arguments || '{}');
 					if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-						args = parsed as Record<string, unknown>;
+						args = parsed as JsonObject;
 					}
 				} catch {
 					// Unparseable arguments cannot be replayed faithfully.

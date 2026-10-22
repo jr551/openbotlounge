@@ -1,6 +1,7 @@
 import { streamSimple as streamOpenAiCompletions } from '@earendil-works/pi-ai/api/openai-completions';
 import { streamSimple as streamCodexResponses } from '@earendil-works/pi-ai/api/openai-codex-responses';
-import type { AssistantMessage, Context, Model, Tool, Usage } from '@earendil-works/pi-ai';
+import type { AssistantMessage, Context, JsonObject, Model, Tool, Usage } from '@earendil-works/pi-ai';
+import { normalizeContext } from '@earendil-works/pi-ai/utils/transcript';
 import { config } from './config';
 import { parseOAuthSession, providerConfig, setSetting } from './db';
 import { refreshOpenAiTokens } from './provider-oauth';
@@ -550,8 +551,16 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<string, S
 		let failed: AssistantMessage | undefined;
 		try {
 			const stream = endpoint.oauth
-				? streamCodexResponses(model as Model<'openai-codex-responses'>, context, streamOpts)
-				: streamOpenAiCompletions(model as Model<'openai-completions'>, context, streamOpts);
+				? streamCodexResponses(
+						model as Model<'openai-codex-responses'>,
+						normalizeContext(context),
+						streamOpts
+					)
+				: streamOpenAiCompletions(
+						model as Model<'openai-completions'>,
+						normalizeContext(context),
+						streamOpts
+					);
 			for await (const event of stream) {
 				if (event.type === 'text_delta') {
 					text += event.delta;
@@ -643,11 +652,11 @@ export function toPiContext(opts: StreamOptions): Context {
 			const text = textOf(m.content);
 			if (text) content.push({ type: 'text', text });
 			for (const call of m.tool_calls ?? []) {
-				let args: Record<string, unknown> = {};
+				let args: JsonObject = {};
 				try {
 					const parsed: unknown = JSON.parse(call.function.arguments || '{}');
 					if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-						args = parsed as Record<string, unknown>;
+						args = parsed as JsonObject;
 					}
 				} catch {
 					// Unparseable arguments cannot be replayed faithfully; an empty

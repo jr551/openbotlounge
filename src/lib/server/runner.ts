@@ -1306,21 +1306,40 @@ export async function runBotTurn(
 		transport: 'sse'
 	});
 	// The seeded transcript is the app's history; the session's own copy is
-	// what the loop snapshots per call. The system prompt is set on state
-	// directly: the resource loader's buildSystemPrompt would append a
-	// "Current working directory" line pointing at a throwaway temp dir.
-	session.agent.state.messages = piContext.messages;
-	session.agent.state.systemPrompt = piContext.systemPrompt ?? '';
+	// what the loop snapshots per call. In pi 1.x the system prompt is replayed
+	// from the transcript's leading system message, not a state field: setting
+	// it on the message keeps the resource loader's buildSystemPrompt out of
+	// the loop, which would append a "Current working directory" line pointing
+	// at a throwaway temp dir.
+	// pi 1.x replays the prompt from the leading system message; history
+	// belongs in prompt(), not duplicated on state, or the loop drops it.
+	session.agent.state.messages = [
+		{
+			role: 'system',
+			content: piContext.systemPrompt ?? '',
+			timestamp: Date.now()
+		}
+	];
+	session.agent.state.tools = (useTools
+		? loungeTools(ctx, turnTools() ?? [])
+		: []) as AgentSession['agent']['state']['tools'];
 	// The turn's signal aborts the run mid-step, not just between steps.
 	const abortRun = () => session.agent.abort();
 	turnSignal.addEventListener('abort', abortRun, { once: true });
 	// The loop consults the budgets after every completed step; a turn that
-	// would have ended anyway (no tool calls) is not a budget stop.
-	session.agent.shouldStopAfterTurn = (turnCtx) => {
-		if (!turnCtx.message.content.some((c) => c.type === 'toolCall')) return false;
-		const spent = spentBudget();
+	// would have ended anyway (no tool calls) is not a budget stop. pi 1.x's
+	// finishTurn sits where shouldStopAfterTurn did: after the turn's tool
+	// results, before the next provider request.
+	session.agent.finishTurn = (turnCtx) => {
+		if (!turnCtx.message.content.some((c) => c.type === 'toolCall')) return undefined;
+		// finishTurn runs before turn_end, so steps has not yet counted this step.
+		let spent: BotTurnResult['stoppedBy'] = '';
+		if (steps + 1 >= config.maxTurnsPerTask) spent = 'turns';
+		else if (chars / 4 >= config.maxTokensPerTask || tokensIn >= config.maxTokensPerTask)
+			spent = 'tokens';
+		else if (Date.now() - startedAt >= config.taskTimeoutMs) spent = 'time';
 		if (spent) stoppedBy = spent;
-		return spent !== '';
+		return spent ? { action: 'end' as const } : undefined;
 	};
 	// The tool list and effort are rebuilt per provider call, so a grant that
 	// lapses mid-turn takes effect on the next call rather than the next turn.
@@ -1485,7 +1504,10 @@ export async function runBotTurn(
 		startedAt = Date.now();
 		stoppedBy ||= spentBudget();
 		if (!stoppedBy) {
-			const run = session.agent.prompt([]);
+			const run =
+				piContext.messages.length > 0
+					? session.agent.prompt(piContext.messages as AgentSession['agent']['state']['messages'])
+					: session.agent.prompt([]);
 			// An abort that landed before the run existed never reached the
 			// listener above, so check once the run is live.
 			if (turnSignal.aborted) session.agent.abort();
@@ -1522,10 +1544,12 @@ export async function runBotTurn(
 				useTools = false;
 				text = text.slice(0, stepStart);
 				const remaining = session.agent.state.messages.filter((m) => m !== failed);
-				// continue() needs a user or tool-result tail; a turn whose
-				// history was only the failed call (a system prompt alone
-				// seeds no messages) gets a minimal user message to answer.
-				if (!remaining.length || remaining[remaining.length - 1].role === 'assistant') {
+				// continue() needs a non-system tail; pi 1.x rejects a transcript
+				// that is only system messages, or one ending on an assistant turn.
+				const last = remaining.at(-1);
+				const onlySystem =
+					remaining.length > 0 && remaining.every((m) => m.role === 'system');
+				if (onlySystem || !last || last.role === 'assistant') {
 					remaining.push({
 						role: 'user',
 						content: [{ type: 'text', text: '(continue)' }],
