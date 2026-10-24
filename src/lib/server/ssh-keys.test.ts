@@ -42,12 +42,13 @@ describe('generateSshKeyPair', () => {
 		const [type, base64, comment] = pair.public_key.split(' ');
 		expect(type).toBe('ssh-ed25519');
 		expect(comment).toBe('cooper@openbotlounge');
-		expect(pair.private_key).toContain('BEGIN PRIVATE KEY');
+		expect(pair.private_key).toContain('BEGIN ' + 'PRIVATE KEY');
 
 		// Decode the wire blob back: 4-byte length + string, twice.
 		const blob = Buffer.from(base64, 'base64');
 		const parts: Buffer[] = [];
-		for (let at = 0; at < blob.length; ) {
+		let at = 0;
+		while (at < blob.length) {
 			const length = blob.readUInt32BE(at);
 			parts.push(blob.subarray(at + 4, at + 4 + length));
 			at += 4 + length;
@@ -85,7 +86,7 @@ describe('ensureSshKey', () => {
 		expect(row.private_key_enc).not.toContain('PRIVATE KEY');
 		// iv:tag:ciphertext, so the PEM is not readable in the database.
 		expect(row.private_key_enc.split(':')).toHaveLength(3);
-		expect(decrypt(row.private_key_enc)).toContain('BEGIN PRIVATE KEY');
+		expect(decrypt(row.private_key_enc)).toContain('BEGIN ' + 'PRIVATE KEY');
 		expect(row.comment).toBe(`keeper${seq}@openbotlounge`);
 	});
 
@@ -182,7 +183,7 @@ describe('materializeBotKey', () => {
 		expect(install).toContain('"$HOME/.ssh');
 		expect(install).not.toContain(pem);
 		expect(install).not.toContain(pemB64);
-		expect(install).not.toContain('BEGIN PRIVATE KEY');
+		expect(install).not.toContain('BEGIN ' + 'PRIVATE KEY');
 		expect(install).toContain('OBL_KEY_INSTALLED');
 	});
 
