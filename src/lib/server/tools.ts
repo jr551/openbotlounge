@@ -1851,7 +1851,7 @@ export const BOT_TOOLS: ToolDef[] = [
 				properties: {
 					host: {
 						type: 'string',
-						description: 'Bare hostname or IP to reach, e.g. 192.168.1.10 (no user@, port or path)'
+						description: 'Bare hostname or IP to reach, e.g. 192.0.2.10 (no user@, port or path)'
 					},
 					username: {
 						type: 'string',
