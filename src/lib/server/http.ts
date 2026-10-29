@@ -1,4 +1,5 @@
 import { error } from '@sveltejs/kit';
+import { config } from './config';
 
 /**
  * Parse a JSON request body. `request.json()` throws on a missing or malformed
@@ -123,7 +124,9 @@ export function isCrossOrigin(origin: string | null | undefined, host: string): 
  * which is what a direct LAN install is.
  */
 export function requestIsSecure(request: Request): boolean {
-	const forwarded = request.headers.get('x-forwarded-proto');
-	if (forwarded) return forwarded.split(',')[0].trim().toLowerCase() === 'https';
+	if (config.trustProxy) {
+		const forwarded = request.headers.get('x-forwarded-proto');
+		if (forwarded) return forwarded.split(',')[0].trim().toLowerCase() === 'https';
+	}
 	return (request.headers.get('origin') ?? '').startsWith('https://');
 }

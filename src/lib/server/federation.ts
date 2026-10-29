@@ -25,6 +25,8 @@ import {
 	type Peer
 } from './db';
 import { decrypt, encrypt } from './secrets';
+import { isPrivateHost } from './provider-connect';
+import { config } from './config';
 import { startTask } from './tasks';
 
 /**
@@ -207,6 +209,26 @@ export function isHttpUrl(value: string): boolean {
 }
 
 /**
+ * Refuse federation fetches to private destinations unless explicitly allowed.
+ * The server POSTs to URLs taken from invites and peer rows; without this check
+ * a crafted invite is SSRF into loopback or cloud metadata from this process.
+ */
+export async function assertPublicFedEndpoint(endpoint: string): Promise<void> {
+	if (config.fedAllowPrivate) return;
+	let host: string;
+	try {
+		host = new URL(endpoint).hostname.toLowerCase().replace(/^\[|\]$/g, '');
+	} catch {
+		throw new Error('endpoint is not a valid URL');
+	}
+	if (await isPrivateHost(host)) {
+		throw new Error(
+			'federation endpoint is a private or link-local address; set FED_ALLOW_PRIVATE=true for LAN pairing'
+		);
+	}
+}
+
+/**
  * The hidden bot that stands in for the external bot in the thread. It authors
  * messages like any other bot; it is simply never offered to the human as one
  * of their own.
@@ -232,6 +254,7 @@ async function postSigned(
 	kind: string,
 	body: Record<string, unknown>
 ): Promise<void> {
+	await assertPublicFedEndpoint(endpoint);
 	const raw = JSON.stringify(body);
 	const ts = Date.now();
 	const res = await fetch(endpoint, {

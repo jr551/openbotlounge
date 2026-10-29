@@ -19,7 +19,9 @@ const ENV_KEYS = [
 	'BOT_SOCIAL',
 	'USER_NAME',
 	'BOT_SOCIAL_MINUTES',
-	'PROVIDER_TEST_ALLOW_PRIVATE'
+	'PROVIDER_TEST_ALLOW_PRIVATE',
+	'TRUST_PROXY',
+	'FED_ALLOW_PRIVATE'
 ] as const;
 
 type EnvKey = (typeof ENV_KEYS)[number];
@@ -74,7 +76,9 @@ describe('config: defaults', () => {
 			social: true,
 			userName: 'you',
 			socialIntervalMin: 60,
-			providerTestAllowPrivate: false
+			providerTestAllowPrivate: false,
+			trustProxy: false,
+			fedAllowPrivate: false
 		});
 	});
 });

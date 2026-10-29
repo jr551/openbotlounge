@@ -93,6 +93,19 @@ export const config = {
 	 * is a local model server turns it on; an exposed one leaves it off.
 	 */
 	providerTestAllowPrivate: envBool(process.env.PROVIDER_TEST_ALLOW_PRIVATE, false),
+	/**
+	 * Whether to trust `x-forwarded-proto` for session-cookie Secure flags and
+	 * OAuth callback URLs. Off by default: any client can send that header on a
+	 * direct connection and break plain-HTTP LAN logins or skew redirect URLs.
+	 * Set true only behind a reverse proxy that strips untrusted forwarded headers.
+	 */
+	trustProxy: envBool(process.env.TRUST_PROXY, false),
+	/**
+	 * Whether federation outbound POSTs may target private or link-local hosts.
+	 * Off by default: a pasted invite would otherwise turn connectPeer into SSRF
+	 * against the metadata service or the app's own loopback services.
+	 */
+	fedAllowPrivate: envBool(process.env.FED_ALLOW_PRIVATE, false),
 	/** The user's name, used to detect @mentions that should ping them. */
 	userName: envText(process.env.USER_NAME, 'you'),
 	/** Minutes between autonomous bot-to-bot chats. */

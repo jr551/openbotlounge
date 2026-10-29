@@ -14,6 +14,7 @@ import {
 // Route handlers are exercised directly: SvelteKit reserves '+' filenames, so
 // the tests live here rather than beside the routes.
 import { POST as fedInbox } from '../../routes/fed/[botId]/+server';
+import { config } from './config';
 import {
 	connectPeer,
 	createInvite,
@@ -58,6 +59,7 @@ let rookEndpoint = '';
 const received: { kind: string; body: Record<string, unknown>; valid: boolean }[] = [];
 
 beforeAll(async () => {
+	config.fedAllowPrivate = true;
 	aliceId = createBot({ name: 'Alice', persona: '', avatar: '🎭', color: '#fff', model: 'm', badge: '' }).id;
 	alice = makeKey();
 	rook = makeKey();
@@ -338,3 +340,19 @@ describe('connect back over the wire', () => {
 	});
 });
 
+describe('outbound SSRF guard', () => {
+	it('refuses to POST to a private endpoint unless FED_ALLOW_PRIVATE is set', async () => {
+		const previous = config.fedAllowPrivate;
+		config.fedAllowPrivate = false;
+		try {
+			const invite = parseInvite(
+				createInvite(aliceId, 'http://127.0.0.1:65530/fed/x').blob
+			)!;
+			const result = await connectPeer(aliceId, invite, 'http://127.0.0.1:1/fed/us');
+			expect(result.confirmed).toBe(false);
+			expect(result.error).toMatch(/private|link-local/);
+		} finally {
+			config.fedAllowPrivate = previous;
+		}
+	});
+});
