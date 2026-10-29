@@ -146,7 +146,7 @@
 		{/if}
 	</div>
 	<div class="search">
-		<input placeholder="Search" bind:value={query} />
+		<input placeholder="Search" aria-label="Search chats" bind:value={query} />
 	</div>
 
 	<button class="newchat" onclick={() => { onPalette(); open = false; }}>
@@ -241,7 +241,13 @@
 							}}
 						>✕</button>
 					{:else if c.unread && c.id !== chat.activeId}
-						<span class="unread" class:ping={!!c.pinged} title={c.pinged ? 'asked for you' : 'new'}></span>
+						<span
+							class="unread"
+							class:ping={!!c.pinged}
+							role="status"
+							aria-label={c.pinged ? 'Asked for you' : 'New messages'}
+							title={c.pinged ? 'asked for you' : 'new'}
+						></span>
 					{:else}
 						<span class="time">{shortTime(c.updated_at)}</span>
 					{/if}
