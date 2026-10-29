@@ -1,11 +1,22 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { checkWebhookRateLimit } from '$lib/server/webhook-rate-limit';
 import { fireWebhook } from '$lib/server/webhooks';
 
 /** A webhook payload is forwarded into a conversation, so it is bounded like one. */
 const MAX_BODY = 256 * 1024;
 
 export const POST: RequestHandler = async ({ params, request }) => {
+	const limit = checkWebhookRateLimit(params.token);
+	if (!limit.allowed) {
+		return json(
+			{ error: 'webhook rate limit exceeded', retry_after: limit.retryAfterSec },
+			{
+				status: 429,
+				headers: { 'Retry-After': String(limit.retryAfterSec) }
+			}
+		);
+	}
 	// Accept any content-type: JSON bodies are normalized, everything else
 	// (text, form data, empty) is delivered as raw text.
 	const raw = await request.text();
