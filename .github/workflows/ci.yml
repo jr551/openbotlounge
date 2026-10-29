@@ -22,7 +22,7 @@ permissions:
 jobs:
   verify:
     name: Typecheck, test and build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, supermicro-server]
     steps:
       - uses: actions/checkout@v7
 
@@ -46,7 +46,7 @@ jobs:
 
   secrets:
     name: Secret scan
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, supermicro-server]
     steps:
       - uses: actions/checkout@v7
 
@@ -68,7 +68,7 @@ jobs:
     name: Publish image to GHCR
     needs: [verify, secrets]
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, supermicro-server]
     permissions:
       contents: read
       packages: write
