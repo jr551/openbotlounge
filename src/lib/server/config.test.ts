@@ -21,7 +21,8 @@ const ENV_KEYS = [
 	'BOT_SOCIAL_MINUTES',
 	'PROVIDER_TEST_ALLOW_PRIVATE',
 	'TRUST_PROXY',
-	'FED_ALLOW_PRIVATE'
+	'FED_ALLOW_PRIVATE',
+	'WEBHOOK_MAX_PER_MINUTE'
 ] as const;
 
 type EnvKey = (typeof ENV_KEYS)[number];
@@ -78,7 +79,8 @@ describe('config: defaults', () => {
 			socialIntervalMin: 60,
 			providerTestAllowPrivate: false,
 			trustProxy: false,
-			fedAllowPrivate: false
+			fedAllowPrivate: false,
+			webhookMaxPerMinute: 30
 		});
 	});
 });
