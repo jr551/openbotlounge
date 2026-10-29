@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chat, collapseBlankLines, oneLine } from './chat.svelte';
-import type { Bot, Message, Routine } from '$lib/types';
+import type { Bot, Conversation, Message, Routine } from '$lib/types';
 
 function jsonRes(body: unknown, ok = true) {
 	return { ok, status: ok ? 200 : 400, json: async () => body } as Response;
@@ -927,6 +927,44 @@ describe('ChatStore.regenerate', () => {
 		await chat.regenerate(MSG);
 
 		expect(chat.messages.map((m) => m.id)).toEqual(['m1']);
+	});
+});
+
+describe('ChatStore poll coalescing', () => {
+	it('issues one conversation fetch when sync reloads overlap', async () => {
+		vi.useFakeTimers();
+		let convFetches = 0;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string) => {
+				if (url === '/api/conversations') {
+					return jsonRes({
+						conversations: [{ id: 'c1', kind: 'direct', updated_at: 5000, unread: 0, last_message: '' }]
+					});
+				}
+				if (url.startsWith('/api/conversations/c1')) {
+					convFetches++;
+					await Promise.resolve();
+					return jsonRes({ messages: [], reactions: {}, notes: [], marks: [], has_more: false });
+				}
+				if (url === '/api/bots') return jsonRes({ bots: [] });
+				if (url === '/api/bot-proposals') return jsonRes({ proposals: [] });
+				if (url === '/api/ssh-requests') return jsonRes({ requests: [] });
+				if (url === '/api/asks') return jsonRes({ asks: [] });
+				return jsonRes({});
+			})
+		);
+		chat.activeId = 'c1';
+		chat.messages = [{ id: 'm1', conversation_id: 'c1', role: 'user', content: 'hi', created_at: 1000 } as Message];
+		chat.conversations = [
+			{ id: 'c1', kind: 'direct', updated_at: 1000, unread: 0, last_message: 'hi' } as Conversation
+		];
+
+		const a = (chat as unknown as { syncFromServer: () => Promise<boolean> }).syncFromServer();
+		const b = (chat as unknown as { syncFromServer: () => Promise<boolean> }).syncFromServer();
+		await Promise.all([a, b]);
+
+		expect(convFetches).toBe(1);
 	});
 });
 
