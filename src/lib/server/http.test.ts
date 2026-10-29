@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { boolField, isCrossOrigin, numField, readJson, strField } from './http';
+import { boolField, isCrossOrigin, numField, readJson, requestIsSecure, strField } from './http';
+import { config } from './config';
 
 // SvelteKit's error() throws a plain HttpError object (not an Error), so
 // toThrow() can't see it - catch it and check the status directly.
@@ -129,5 +130,45 @@ describe('isCrossOrigin', () => {
 		expect(isCrossOrigin(undefined, '192.168.1.25:3000')).toBe(false);
 		expect(isCrossOrigin(null, '192.168.1.25:3000')).toBe(false);
 		expect(isCrossOrigin('', '192.168.1.25:3000')).toBe(false);
+	});
+});
+
+describe('requestIsSecure', () => {
+	it('ignores x-forwarded-proto unless TRUST_PROXY is enabled', () => {
+		const previous = config.trustProxy;
+		config.trustProxy = false;
+		try {
+			const req = new Request('http://192.168.1.1/login', {
+				headers: { 'x-forwarded-proto': 'https' }
+			});
+			expect(requestIsSecure(req)).toBe(false);
+		} finally {
+			config.trustProxy = previous;
+		}
+	});
+
+	it('honours x-forwarded-proto when TRUST_PROXY is enabled', () => {
+		const previous = config.trustProxy;
+		config.trustProxy = true;
+		try {
+			const req = new Request('http://192.168.1.1/login', {
+				headers: { 'x-forwarded-proto': 'https, http' }
+			});
+			expect(requestIsSecure(req)).toBe(true);
+		} finally {
+			config.trustProxy = previous;
+		}
+	});
+
+	it('falls back to Origin when proxy trust is off', () => {
+		const previous = config.trustProxy;
+		config.trustProxy = false;
+		try {
+			expect(
+				requestIsSecure(new Request('http://x/', { headers: { origin: 'https://x' } }))
+			).toBe(true);
+		} finally {
+			config.trustProxy = previous;
+		}
 	});
 });
