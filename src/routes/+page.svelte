@@ -61,6 +61,8 @@
 	}
 	// Below 700px the rail leaves the layout and reopens as an overlay.
 	let sidebarOpen = $state(false);
+	/** Matches the sidebar overlay breakpoint; main is inert while the drawer is open. */
+	let drawerOverlay = $state(false);
 	// The lounge's stir-the-pot box only exists at the bottom of the thread.
 	let atBottom = $state(true);
 
@@ -140,8 +142,10 @@
 		// the overlay state must not linger.
 		const mq = window.matchMedia('(max-width: 700px)');
 		const onMq = () => {
+			drawerOverlay = mq.matches;
 			if (!mq.matches) sidebarOpen = false;
 		};
+		onMq();
 		mq.addEventListener('change', onMq);
 		window.addEventListener('keydown', onKey);
 		return () => {
@@ -173,14 +177,17 @@
 <div class="app">
 	<Sidebar bind:open={sidebarOpen} onPalette={() => (paletteOpen = true)} onMarketplace={() => (marketplaceOpen = true)} onSettings={() => (settingsOpen = true)} />
 
-	<main>
+	<main inert={drawerOverlay && sidebarOpen}>
 		{#if conv}
 			<header>
 				<div class="contact">
 					<button
 						class="iconbtn menubtn"
 						class:on={sidebarOpen}
+						type="button"
 						title="Conversations"
+						aria-label="Conversations"
+						aria-expanded={sidebarOpen}
 						onclick={() => (sidebarOpen = !sidebarOpen)}
 					>
 						<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9.5 4v16"/></svg>
@@ -291,7 +298,9 @@
 				<div class="headside">
 					<button
 						class="txtbtn"
+						type="button"
 						title="Collapse this backlog into the summary and start a fresh topic"
+						aria-label="New topic"
 						disabled={chat.streaming}
 						onclick={() => chat.newTopic()}
 					>
@@ -303,7 +312,10 @@
 							class="iconbtn"
 							class:on={tasksOpen}
 							class:busy={chat.busyTasks > 0}
+							type="button"
 							title="Background tasks"
+							aria-label="Background tasks"
+							aria-expanded={tasksOpen}
 							onclick={() => (tasksOpen = !tasksOpen)}
 						>
 							<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
@@ -312,7 +324,10 @@
 							class="iconbtn"
 							class:on={screenOpen}
 							class:using={chat.botUsingComputer}
+							type="button"
 							title="Bot screen"
+							aria-label="Bot screen"
+							aria-expanded={screenOpen}
 							onclick={() => (screenOpen = !screenOpen)}
 						>
 							<!-- A desktop monitor: landscape screen on a stand, so the
@@ -320,7 +335,7 @@
 							     at, not the phone-shaped box it used to look like. -->
 							<svg class="monitor" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect class="mon-screen" width="20" height="14" x="2" y="3" rx="2"/><line class="mon-stand" x1="8" x2="16" y1="21" y2="21"/><line class="mon-stand" x1="12" x2="12" y1="17" y2="21"/></svg>
 						</button>
-						<button class="iconbtn" title="Plugins" onclick={() => (pluginsOpen = true)}>
+						<button class="iconbtn" type="button" title="Plugins" aria-label="Plugins" onclick={() => (pluginsOpen = true)}>
 							<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6M6 8h12v6a6 6 0 0 1-12 0z"/></svg>
 						</button>
 					{/if}
@@ -361,7 +376,10 @@
 				<button
 					class="iconbtn menubtn"
 					class:on={sidebarOpen}
+					type="button"
 					title="Conversations"
+					aria-label="Conversations"
+					aria-expanded={sidebarOpen}
 					onclick={() => (sidebarOpen = !sidebarOpen)}
 				>
 					<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9.5 4v16"/></svg>
