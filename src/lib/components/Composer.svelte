@@ -229,14 +229,15 @@
 				<button
 					class="tool lock"
 					class:on={chat.secretDraft}
-					title="Give them a secret"
 					type="button"
+					title="Give them a secret"
+					aria-label="Give them a secret"
 					onclick={() => (chat.secretDraft = !chat.secretDraft)}
 				>
 					<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path class="shackle" d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
 				</button>
 
-				<button class="tool" title="Attach a text file" onclick={() => fileInput.click()}>
+				<button class="tool" type="button" title="Attach a text file" aria-label="Attach a text file" onclick={() => fileInput.click()}>
 					<svg class="attach" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
 				</button>
 				<input bind:this={fileInput} type="file" multiple hidden accept="text/*,.txt,.md,.json,.js,.ts,.py,.csv,.log,.yaml,.yml,.xml,.html,.css,.toml,.ini,.sh,.sql" onchange={onFiles} />
@@ -245,6 +246,7 @@
 			<textarea
 				rows="1"
 				placeholder="Message {placeholderName}"
+				aria-label="Message {placeholderName}"
 				bind:this={textarea}
 				bind:value={text}
 				oninput={(e) => autogrow(e.currentTarget)}
@@ -256,7 +258,9 @@
 				<button
 					class="tool brain"
 					class:on={chat.think}
+					type="button"
 					title={chat.think ? 'Thinking hard' : 'Think harder'}
+					aria-label={chat.think ? 'Thinking hard' : 'Think harder'}
 					onclick={() => (chat.think = !chat.think)}
 				>
 					<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.6C10.7 3.7 9.1 3.4 7.7 4 5.6 4.9 4.3 6.8 4.3 9c0 .5.1 1 .3 1.4a3.6 3.6 0 0 0-1.1 3.5c0 1.6 1.1 3 2.7 3.4.6 1.5 2.1 2.6 3.9 2.6.7 0 1.5-.2 1.9-.7"/><path d="M12 4.6c1.3-.9 2.9-1.2 4.3-.6 2.1.9 3.4 2.8 3.4 5 0 .5-.1 1-.3 1.4a3.6 3.6 0 0 1 1.1 3.5c0 1.6-1.1 3-2.7 3.4-.6 1.5-2.1 2.6-3.9 2.6-.7 0-1.5-.2-1.9-.7"/><path d="M12 4.6v14.6"/><path d="M8.3 8.5c-1 .3-1.7 1.2-1.7 2.3"/><path d="M15.7 8.5c1 .3 1.7 1.2 1.7 2.3"/></svg>
@@ -264,19 +268,19 @@
 
 				<EmojiPicker onselect={insertEmoji} />
 
-				<button class="tool mic" class:on={listening} title="Voice input" onclick={mic}>
+				<button class="tool mic" class:on={listening} type="button" title="Voice input" aria-label="Voice input" onclick={mic}>
 					<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 19v3"/></svg>
 				</button>
 
 				{#if chat.streaming}
-					<button class="send stop" title="Stop" onclick={() => chat.stop()}>
+					<button class="send stop" type="button" title="Stop" aria-label="Stop" onclick={() => chat.stop()}>
 						<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
 					</button>
-					<button class="send branch" title="Branch new subtask" onclick={() => void chat.sendBranch(text)}>
+					<button class="send branch" type="button" title="Branch new subtask" aria-label="Branch new subtask" onclick={() => void chat.sendBranch(text)}>
 						<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12"/><path d="M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M15 6h-3a3 3 0 0 0-3 3v3"/></svg>
 					</button>
 				{/if}
-				<button class="send" title="Send" disabled={!canSend} onclick={submit}>
+				<button class="send" type="button" title="Send" aria-label="Send" disabled={!canSend} onclick={submit}>
 					<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
 				</button>
 			</div>
