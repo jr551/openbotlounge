@@ -106,6 +106,11 @@ export const config = {
 	 * against the metadata service or the app's own loopback services.
 	 */
 	fedAllowPrivate: envBool(process.env.FED_ALLOW_PRIVATE, false),
+	/**
+	 * Maximum webhook POSTs per token per minute. 0 disables limiting. Stops a
+	 * leaked hook URL from burning LLM budget in a tight loop.
+	 */
+	webhookMaxPerMinute: envNumber(process.env.WEBHOOK_MAX_PER_MINUTE, 30, 0),
 	/** The user's name, used to detect @mentions that should ping them. */
 	userName: envText(process.env.USER_NAME, 'you'),
 	/** Minutes between autonomous bot-to-bot chats. */
