@@ -15,6 +15,14 @@ const ACTIVITY_MAX_MS = 30_000;
 /** Machine presence changes no faster than a container starts or stops. */
 const PRESENCE_MIN_MS = 8000;
 const PRESENCE_MAX_MS = 30_000;
+/** Fleet-wide task tray poll; backs off while the tray is quiet. */
+const GLOBAL_TASK_MIN_MS = 3000;
+const GLOBAL_TASK_MAX_MS = 30_000;
+/** Active-conversation task poll while turns run (SSE carries previews). */
+const TASK_POLL_MS = 700;
+const TASK_POLL_LIVE_MS = 1800;
+/** Debounce bot/proposal/ssh/ask re-reads after a thread reload. */
+const META_REFRESH_MS = 300;
 
 /**
  * The activity kinds that mean a bot is at its machine: a shell command, a
@@ -70,7 +78,8 @@ class ChatStore {
 	theme = $state('');
 	/** Background turns fleet-wide, for the left list's typing/action bubbles. */
 	globalTasks = $state<Task[]>([]);
-	private globalTaskTimer: ReturnType<typeof setInterval> | null = null;
+	private globalTaskTimer: ReturnType<typeof setTimeout> | undefined;
+	private globalTaskDelay = GLOBAL_TASK_MIN_MS;
 	/** Background turns: running work plus recently finished, newest first. */
 	tasks = $state<Task[]>([]);
 	/**
@@ -103,10 +112,12 @@ class ChatStore {
 	 */
 	steeredIds = $state<string[]>([]);
 
-	private taskTimer: ReturnType<typeof setInterval> | null = null;
+	private taskTimer: ReturnType<typeof setTimeout> | undefined;
 	private activityTimer: ReturnType<typeof setTimeout> | undefined;
 	private syncTimer: ReturnType<typeof setTimeout> | undefined;
 	private presenceTimer: ReturnType<typeof setTimeout> | undefined;
+	private metaRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+	private reloadThreadInflight: Promise<void> | null = null;
 	/**
 	 * How long the ambient polls currently wait between ticks. Each backs off
 	 * while nothing changes and snaps back to its minimum the moment something
@@ -134,10 +145,19 @@ class ChatStore {
 	}
 
 	private scheduleGlobalTaskPoll() {
-		clearInterval(this.globalTaskTimer as unknown as ReturnType<typeof setTimeout>);
-		this.globalTaskTimer = setInterval(() => {
-			void this.refreshGlobalTasks();
-		}, 1800) as unknown as ReturnType<typeof setInterval>;
+		clearTimeout(this.globalTaskTimer);
+		this.globalTaskTimer = setTimeout(() => {
+			void (async () => {
+				if (typeof document === 'undefined' || !document.hidden) {
+					const before = this.globalTasks.map((t) => `${t.id}:${t.status}`).join('|');
+					await this.refreshGlobalTasks();
+					const after = this.globalTasks.map((t) => `${t.id}:${t.status}`).join('|');
+					this.globalTaskDelay =
+						before !== after ? GLOBAL_TASK_MIN_MS : Math.min(this.globalTaskDelay * 1.5, GLOBAL_TASK_MAX_MS);
+				}
+				this.scheduleGlobalTaskPoll();
+			})();
+		}, this.globalTaskDelay);
 		void this.refreshGlobalTasks();
 	}
 
@@ -277,6 +297,7 @@ class ChatStore {
 				this.syncDelay = SYNC_MIN_MS;
 				this.activityDelay = ACTIVITY_MIN_MS;
 				this.presenceDelay = PRESENCE_MIN_MS;
+				this.globalTaskDelay = GLOBAL_TASK_MIN_MS;
 				void this.syncFromServer();
 				void this.refreshActivities();
 				// A sleep that happened while the tab was hidden is the one thing
@@ -1587,8 +1608,27 @@ class ChatStore {
 		this.messages = this.mergeThread(id, body.messages);
 		this.hasMoreMessages = body.has_more ?? false;
 	}
+	/** Debounced side fetches after reloadThread so one burst of updates costs one round trip each. */
+	private scheduleMetaRefresh() {
+		clearTimeout(this.metaRefreshTimer);
+		this.metaRefreshTimer = setTimeout(() => {
+			void this.refreshBots();
+			void this.refreshBotProposals();
+			void this.refreshSshRequests();
+			void this.refreshAsks();
+		}, META_REFRESH_MS);
+	}
+
 	/** Re-read the open thread (messages, reactions, notes, board marks). */
-	private async reloadThread() {
+	private reloadThread(): Promise<void> {
+		if (this.reloadThreadInflight) return this.reloadThreadInflight;
+		this.reloadThreadInflight = this.reloadThreadOnce().finally(() => {
+			this.reloadThreadInflight = null;
+		});
+		return this.reloadThreadInflight;
+	}
+
+	private async reloadThreadOnce() {
 		const id = this.activeId;
 		if (!id) return;
 		const limit = Math.max(this.messages.length, 200);
@@ -1601,12 +1641,7 @@ class ChatStore {
 		this.reactions = body.reactions ?? {};
 		this.notes = body.notes ?? [];
 		this.marks = body.marks ?? [];
-		// A finished turn may have left a style proposal on its bot, or a pitch
-		// for a new one; both lists are cheap enough to re-read with the thread.
-		void this.refreshBots();
-		void this.refreshBotProposals();
-		void this.refreshSshRequests();
-		void this.refreshAsks();
+		this.scheduleMetaRefresh();
 	}
 
 	/**
@@ -1694,16 +1729,22 @@ class ChatStore {
 	}
 
 	/** Poll while anything is running; stop as soon as the conversation is idle. */
+	private taskPollDelayMs() {
+		return this.taskStream && this.runningTasks.length ? TASK_POLL_LIVE_MS : TASK_POLL_MS;
+	}
+
 	private watchTasks() {
-		if (this.taskTimer) clearInterval(this.taskTimer);
-		this.taskTimer = setInterval(() => {
+		clearTimeout(this.taskTimer);
+		const tick = () => {
 			void this.pollTasks().then(() => {
-				if (!this.runningTasks.length && this.taskTimer) {
-					clearInterval(this.taskTimer);
-					this.taskTimer = null;
+				if (!this.runningTasks.length) {
+					this.taskTimer = undefined;
+					return;
 				}
+				this.taskTimer = setTimeout(tick, this.taskPollDelayMs());
 			});
-		}, 700);
+		};
+		this.taskTimer = setTimeout(tick, this.taskPollDelayMs());
 	}
 
 	/**
