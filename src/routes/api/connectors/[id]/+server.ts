@@ -6,6 +6,7 @@ import {
 	decryptedConfig,
 	elevenlabsPhoneNumbers,
 	ensureTailscale,
+	forgejoRepos,
 	listWhatsappChats,
 	tailscaleStatus,
 	uninstallConnector,
@@ -71,6 +72,10 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	// ElevenLabs: the account's numbers, for the phone-number-id picker.
 	if (body.action === 'numbers') {
 		return json({ numbers: await elevenlabsPhoneNumbers(params.id) });
+	}
+	// Forgejo: the token's repos, for the default-repo picker.
+	if (body.action === 'repos') {
+		return json({ repos: await forgejoRepos(params.id) });
 	}
 	// Tailscale: bring one bot's machine onto the tailnet, or just report.
 	if (body.action === 'join' || body.action === 'status') {

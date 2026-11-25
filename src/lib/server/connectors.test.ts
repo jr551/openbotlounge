@@ -6,6 +6,7 @@ import {
 	connectWhatsapp,
 	decryptedConfig,
 	elevenlabsPhoneNumbers,
+	forgejoRepos,
 	installConnector,
 	listCatalog,
 	listInstalled,
@@ -399,6 +400,262 @@ describe('elevenlabs install and account lookup', () => {
 		]);
 		expect(seen[0].url).toBe('https://api.elevenlabs.io/v1/convai/phone-numbers');
 		expect(seen[0].key).toBe('sk_test_key');
+
+		uninstallConnector(view.plugin_id);
+	});
+});
+
+describe('forgejo tool', () => {
+	const def = CONNECTORS.find((c) => c.id === 'forgejo')!;
+	const config = {
+		base_url: 'https://git.rowe.lol',
+		token: 'forgejo_test_token',
+		default_repo: 'john/home-infra-information'
+	};
+
+	/** The tool body with a stubbed fetch, recording every request it makes. */
+	async function run(
+		args: Record<string, unknown>,
+		cfg: Record<string, unknown> = config,
+		reply: { status?: number; body?: unknown; throws?: boolean } = {}
+	) {
+		const calls: { url: string; init: RequestInit }[] = [];
+		const fetchMock = async (url: string, init: RequestInit = {}) => {
+			calls.push({ url, init });
+			if (reply.throws) throw new Error('getaddrinfo ENOTFOUND git.rowe.lol');
+			const status = reply.status ?? 200;
+			const body = reply.body ?? {};
+			return { ok: status < 400, status, json: async () => body } as Response;
+		};
+		const fn = new Function('args', 'config', 'fetch', `return (async () => { ${def.toolCode} })()`);
+		const out = await fn(args, cfg, fetchMock);
+		return { out, calls };
+	}
+
+	const authOf = (init: RequestInit) => (init.headers as Record<string, string>).Authorization;
+
+	it('reads a repo with the token and trims the readout', async () => {
+		const { out, calls } = await run(
+			{ action: 'repo' },
+			config,
+			{
+				body: {
+					full_name: 'john/home-infra-information',
+					description: 'home lab',
+					default_branch: 'main',
+					private: true,
+					open_issues_count: 1,
+					open_pr_counter: 2,
+					html_url: 'https://git.rowe.lol/john/home-infra-information',
+					clone_url: 'https://git.rowe.lol/john/home-infra-information.git',
+					extra_noise: 'dropped'
+				}
+			}
+		);
+		expect(calls).toHaveLength(1);
+		expect(calls[0].url).toBe('https://git.rowe.lol/api/v1/repos/john/home-infra-information');
+		expect(calls[0].init.method).toBe('GET');
+		expect(authOf(calls[0].init)).toBe('token forgejo_test_token');
+		expect(out).toEqual({
+			full_name: 'john/home-infra-information',
+			description: 'home lab',
+			default_branch: 'main',
+			private: true,
+			open_issues: 1,
+			open_pulls: 2,
+			html_url: 'https://git.rowe.lol/john/home-infra-information',
+			clone_url: 'https://git.rowe.lol/john/home-infra-information.git'
+		});
+	});
+
+	it('lists issues and pulls with slim rows', async () => {
+		const { out, calls } = await run(
+			{ action: 'issues', repo: 'john/other', state: 'all' },
+			config,
+			{ body: [{ number: 1, title: 'Fix it', state: 'open', user: { login: 'john' }, comments: 3, html_url: 'u' }] }
+		);
+		expect(calls[0].url).toBe(
+			'https://git.rowe.lol/api/v1/repos/john/other/issues?state=all&type=issues&limit=10'
+		);
+		expect(out).toEqual([
+			{ number: 1, title: 'Fix it', state: 'open', user: 'john', comments: 3, html_url: 'u' }
+		]);
+
+		const pulls = await run({ action: 'pulls' }, config, {
+			body: [
+				{
+					number: 4,
+					title: 'Docs',
+					state: 'open',
+					merged: false,
+					base: { label: 'main' },
+					head: { label: 'feat' },
+					user: { login: 'john' },
+					html_url: 'p'
+				}
+			]
+		});
+		expect(pulls.out).toEqual([
+			{
+				number: 4,
+				title: 'Docs',
+				state: 'open',
+				merged: false,
+				base: 'main',
+				head: 'feat',
+				user: 'john',
+				html_url: 'p'
+			}
+		]);
+	});
+
+	it('validates before writing: titles, numbers, branches and repos', async () => {
+		const noTitle = await run({ action: 'issue_create', body: 'text' });
+		expect(String(noTitle.out)).toContain('title required');
+		expect(noTitle.calls).toHaveLength(0);
+
+		const noNumber = await run({ action: 'issue', repo: 'john/other' });
+		expect(String(noNumber.out)).toContain('number required');
+		expect(noNumber.calls).toHaveLength(0);
+
+		const noHead = await run({ action: 'pull_create', base: 'main', title: 'T' });
+		expect(String(noHead.out)).toContain('head branch required');
+		expect(noHead.calls).toHaveLength(0);
+
+		const badRepo = await run({ action: 'issues', repo: 'not-a-repo' });
+		expect(String(badRepo.out)).toContain('owner/name');
+		expect(badRepo.calls).toHaveLength(0);
+
+		const noRepo = await run({ action: 'issues' }, { base_url: 'https://git.rowe.lol', token: 't' });
+		expect(String(noRepo.out)).toContain('repo required');
+		expect(noRepo.calls).toHaveLength(0);
+
+		const noToken = await run({ action: 'repo' }, { base_url: 'https://git.rowe.lol' });
+		expect(String(noToken.out)).toContain('token missing');
+		expect(noToken.calls).toHaveLength(0);
+
+		const nonsense = await run({ action: 'frobnicate' });
+		expect(String(nonsense.out)).toContain('unknown action');
+		expect(nonsense.calls).toHaveLength(0);
+	});
+
+	it('creates issues and comments with capped text', async () => {
+		const created = await run({ action: 'issue_create', title: '  New bug  ', body: 'b'.repeat(9000) });
+		expect(created.calls[0].init.method).toBe('POST');
+		expect(created.calls[0].url).toBe('https://git.rowe.lol/api/v1/repos/john/home-infra-information/issues');
+		expect(JSON.parse(String(created.calls[0].init.body))).toEqual({
+			title: 'New bug',
+			body: 'b'.repeat(8000)
+		});
+
+		const commented = await run({ action: 'issue_comment', number: 2, comment: 'noted' });
+		expect(commented.calls[0].url).toBe(
+			'https://git.rowe.lol/api/v1/repos/john/home-infra-information/issues/2/comments'
+		);
+		expect(JSON.parse(String(commented.calls[0].init.body))).toEqual({ body: 'noted' });
+	});
+
+	it('merges a pull with the merge directive', async () => {
+		const { out, calls } = await run({ action: 'pull_merge', number: 5 });
+		expect(calls[0].init.method).toBe('POST');
+		expect(calls[0].url).toBe('https://git.rowe.lol/api/v1/repos/john/home-infra-information/pulls/5/merge');
+		expect(JSON.parse(String(calls[0].init.body))).toEqual({ Do: 'merge' });
+		expect(out).toEqual({ merged: true });
+	});
+
+	it('passes CI runs through slimmed', async () => {
+		const { out, calls } = await run(
+			{ action: 'runs' },
+			config,
+			{ body: { workflow_runs: [{ id: 1, name: 'CI', status: 'completed', noise: 'dropped' }] } }
+		);
+		expect(calls[0].url).toContain('/actions/tasks?limit=10');
+		expect(out).toEqual([{ id: 1, name: 'CI', status: 'completed' }]);
+	});
+
+	it('turns an unreachable API and an API rejection into readable text', async () => {
+		const down = await run({ action: 'repo' }, config, { throws: true });
+		expect(down.out).toEqual({
+			error: expect.stringContaining('Forgejo unreachable: getaddrinfo ENOTFOUND')
+		});
+
+		const denied = await run({ action: 'repo' }, config, {
+			status: 401,
+			body: { message: 'Only signed in user is allowed to call APIs.' }
+		});
+		expect(denied.out).toEqual({
+			error: 'Forgejo HTTP 401',
+			detail: { message: 'Only signed in user is allowed to call APIs.' }
+		});
+	});
+});
+
+describe('forgejo install and repo lookup', () => {
+	afterEach(() => vi.unstubAllGlobals());
+
+	it('installs from the catalog and exposes its tool once assigned and on', () => {
+		const view = installConnector('forgejo');
+		expect(view.name).toBe('Forgejo');
+		expect(view.configured).toBe(false);
+		expect(view.enabled).toBe(false);
+		expect(view.fields.map((f) => f.key)).toEqual(['base_url', 'token', 'default_repo']);
+		expect(listCatalog().find((c) => c.id === 'forgejo')?.installed?.plugin_id).toBe(view.plugin_id);
+
+		updateConnector(view.plugin_id, {
+			values: { base_url: 'https://git.rowe.lol', token: 'forgejo_test_token', default_repo: 'john/x' },
+			bots: [bot.id],
+			enabled: true
+		});
+		const tool = pluginToolsFor(bot.id).find((t) => t.function.name === 'plugin_forgejo');
+		expect(tool).toBeDefined();
+		const schema = tool!.function.parameters as { properties: { action: { enum: string[] } } };
+		expect(schema.properties.action.enum).toContain('pull_merge');
+
+		uninstallConnector(view.plugin_id);
+		expect(getPlugin(view.plugin_id)).toBeUndefined();
+	});
+
+	it('stores the token encrypted and reads the repo list with it', async () => {
+		const view = installConnector('forgejo');
+
+		let status = 0;
+		try {
+			await forgejoRepos(view.plugin_id);
+		} catch (e) {
+			status = (e as { status: number }).status;
+		}
+		expect(status).toBe(400);
+
+		updateConnector(view.plugin_id, {
+			values: { base_url: 'https://git.rowe.lol/', token: 'forgejo_test_token' }
+		});
+		const raw = getPlugin(view.plugin_id)!.config ?? '';
+		expect(raw).toContain('enc:');
+		expect(raw).not.toContain('forgejo_test_token');
+
+		const seen: { url: string; key: string }[] = [];
+		vi.stubGlobal(
+			'fetch',
+			async (url: string, init: RequestInit = {}) => {
+				const headers = (init.headers ?? {}) as Record<string, string>;
+				seen.push({ url, key: headers['Authorization'] });
+				return {
+					ok: true,
+					status: 200,
+					json: async () => [
+						{ full_name: 'john/a', private: true, default_branch: 'main', noise: 1 },
+						{ full_name: 'john/b', private: false, default_branch: 'trunk' }
+					]
+				} as Response;
+			}
+		);
+
+		expect(await forgejoRepos(view.plugin_id)).toEqual([
+			{ full_name: 'john/a', private: true, default_branch: 'main' },
+			{ full_name: 'john/b', private: false, default_branch: 'trunk' }
+		]);
+		expect(seen[0].url).toBe('https://git.rowe.lol/api/v1/user/repos?limit=50');
+		expect(seen[0].key).toBe('token forgejo_test_token');
 
 		uninstallConnector(view.plugin_id);
 	});

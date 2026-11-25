@@ -82,6 +82,8 @@ const TAILSCALE_ICON = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/s
 
 const ELEVENLABS_ICON = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor" stroke="none"><rect x="7.4" y="4" width="2.8" height="16" rx="1.4"/><rect x="13.8" y="4" width="2.8" height="16" rx="1.4"/></svg>`;
 
+const FORGEJO_ICON = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><circle cx="18" cy="12" r="2.4"/><path d="M6 8.4v7.2M18 12H9.5C8 12 7 10.8 7 9.5"/></svg>`;
+
 export const CONNECTORS: ConnectorDef[] = [
 	{
 		id: 'whatsapp',
@@ -951,6 +953,289 @@ switch (args.action) {
 \tdefault:
 \t\treturn 'error: unknown action (call|status|numbers)';
 }`
+	},
+	{
+		id: 'forgejo',
+		name: 'Forgejo',
+		description:
+			'Repos, branches, commits, issues, pull requests, CI runs and releases ' +
+			'on your Forgejo host (git.rowe.lol or any Forgejo). The bot can read the ' +
+			'tracker and the review queue, file and comment on issues, open and merge ' +
+			'pull requests, and check CI - writes use the stored API token.',
+		icon_svg: FORGEJO_ICON,
+		configFields: [
+			{
+				key: 'base_url',
+				label: 'Forgejo base URL',
+				placeholder: 'https://git.rowe.lol',
+				required: true
+			},
+			{
+				key: 'token',
+				label: 'API token (Forgejo → Settings → Applications)',
+				secret: true,
+				placeholder: 'stored on the box, never shown again',
+				required: true
+			},
+			{
+				key: 'default_repo',
+				label: 'Default repo (owner/name)',
+				placeholder: 'john/home-infra-information'
+			}
+		],
+		parameters: {
+			type: 'object',
+			properties: {
+				action: {
+					type: 'string',
+					enum: [
+						'repo',
+						'branches',
+						'commits',
+						'issues',
+						'issue',
+						'issue_create',
+						'issue_comment',
+						'comments',
+						'issue_close',
+						'pulls',
+						'pull',
+						'pull_create',
+						'pull_merge',
+						'runs',
+						'releases'
+					],
+					description: 'What to do on the Forgejo host'
+				},
+				repo: {
+					type: 'string',
+					description: 'Repo as owner/name; falls back to the default repo'
+				},
+				number: {
+					type: 'number',
+					description: 'Issue or pull number for the item actions'
+				},
+				title: { type: 'string', description: 'Title for issue_create / pull_create' },
+				body: { type: 'string', description: 'Body text for creates and comments' },
+				comment: { type: 'string', description: 'Comment text for issue_comment' },
+				head: { type: 'string', description: 'Source branch for pull_create' },
+				base: { type: 'string', description: 'Target branch for pull_create' },
+				state: {
+					type: 'string',
+					description: 'issues/pulls filter: open, closed or all (default open)'
+				},
+				branch: { type: 'string', description: 'Branch for commits (default the default branch)' },
+				limit: { type: 'number', description: 'Max items to return (default 10, max 50)' }
+			},
+			required: ['action']
+		},
+		toolCode: `const base = (config.base_url || '').replace(/\\/+$/, '');
+if (!base) return 'error: forgejo connector is not configured (base_url missing)';
+const token = config.token || '';
+if (!token) return 'error: forgejo connector is not configured (token missing)';
+const cap = (s, n) => String(s ?? '').slice(0, n);
+const repoPath = () => {
+const raw = cap(args.repo || config.default_repo || '', 120).trim();
+const m = raw.match(/^([^/\\s]+)\\/([^/\\s]+)$/);
+return m ? m[1] + '/' + m[2] : '';
+};
+const num = () => {
+const n = Number(args.number);
+return Number.isInteger(n) && n > 0 ? n : 0;
+};
+const lim = () => Math.min(50, Math.max(1, Number(args.limit) || 10));
+const stateOf = () => {
+const s = String(args.state || 'open').toLowerCase();
+return s === 'closed' || s === 'all' ? s : 'open';
+};
+const call = async (method, path, body) => {
+let res;
+try {
+res = await fetch(base + path, {
+method,
+headers: { 'Content-Type': 'application/json', Authorization: 'token ' + token },
+body: body === undefined ? undefined : JSON.stringify(body)
+});
+} catch (e) {
+return { error: 'Forgejo unreachable: ' + String((e && e.message) || e) };
+}
+const data = await res.json().catch(() => null);
+if (!res.ok) return { error: 'Forgejo HTTP ' + res.status, detail: data };
+return data;
+};
+const userOf = (u) => (u && u.login) || '';
+const repo = repoPath();
+if (!repo) return 'error: repo required as owner/name (or set a default repo)';
+const slimIssue = (i) => ({
+number: i.number || 0,
+title: i.title || '',
+state: i.state || '',
+user: userOf(i.user),
+comments: i.comments || 0,
+html_url: i.html_url || ''
+});
+const slimPull = (p) => ({
+number: p.number || 0,
+title: p.title || '',
+state: p.state || '',
+merged: !!p.merged,
+base: (p.base && (p.base.label || p.base.ref)) || '',
+head: (p.head && (p.head.label || p.head.ref)) || '',
+user: userOf(p.user),
+html_url: (p.html_url || p.url || '')
+});
+switch (args.action) {
+case 'repo': {
+const out = await call('GET', '/api/v1/repos/' + repo);
+if (!out || out.error) return out;
+return {
+full_name: out.full_name || '',
+description: cap(out.description, 300),
+default_branch: out.default_branch || '',
+private: !!out.private,
+open_issues: out.open_issues_count || 0,
+open_pulls: out.open_pr_counter || 0,
+html_url: out.html_url || '',
+clone_url: out.clone_url || ''
+};
+}
+case 'branches': {
+const out = await call('GET', '/api/v1/repos/' + repo + '/branches?limit=' + lim());
+if (!Array.isArray(out)) return out;
+return out.slice(0, 50).map((b) => ({
+name: b.name || '',
+sha: String((b.commit && b.commit.id) || '').slice(0, 7)
+}));
+}
+case 'commits': {
+const branch = cap(args.branch || '', 120);
+const out = await call(
+'GET',
+'/api/v1/repos/' + repo + '/commits?limit=' + lim() + (branch ? '&sha=' + encodeURIComponent(branch) : '')
+);
+if (!Array.isArray(out)) return out;
+return out.slice(0, 50).map((c) => ({
+sha: String(c.sha || '').slice(0, 7),
+message: cap(c.commit && c.commit.message, 200).split('\\n')[0],
+author: (c.commit && c.commit.author && c.commit.author.name) || '',
+date: (c.commit && c.commit.author && c.commit.author.date) || ''
+}));
+}
+case 'issues': {
+const out = await call(
+'GET',
+'/api/v1/repos/' + repo + '/issues?state=' + stateOf() + '&type=issues&limit=' + lim()
+);
+if (!Array.isArray(out)) return out;
+return out.slice(0, 50).map(slimIssue);
+}
+case 'issue': {
+const n = num();
+if (!n) return 'error: number required';
+const out = await call('GET', '/api/v1/repos/' + repo + '/issues/' + n);
+if (!out || out.error) return out;
+return { ...slimIssue(out), body: cap(out.body, 4000), labels: (out.labels || []).map((l) => l.name || '').filter((x) => x) };
+}
+case 'issue_create': {
+const title = cap(args.title, 200).trim();
+if (!title) return 'error: title required';
+const out = await call('POST', '/api/v1/repos/' + repo + '/issues', {
+title,
+body: cap(args.body, 8000)
+});
+if (!out || out.error) return out;
+return { number: out.number || 0, html_url: out.html_url || '' };
+}
+case 'comments': {
+const n = num();
+if (!n) return 'error: number required';
+const out = await call('GET', '/api/v1/repos/' + repo + '/issues/' + n + '/comments?limit=' + lim());
+if (!Array.isArray(out)) return out;
+return out.slice(-20).map((c) => ({
+user: userOf(c.user),
+body: cap(c.body, 2000),
+created: c.created_at || ''
+}));
+}
+case 'issue_comment': {
+const n = num();
+if (!n) return 'error: number required';
+const text = cap(args.comment || args.body, 4000).trim();
+if (!text) return 'error: comment required';
+const out = await call('POST', '/api/v1/repos/' + repo + '/issues/' + n + '/comments', { body: text });
+if (!out || out.error) return out;
+return { id: out.id || 0, html_url: out.html_url || '' };
+}
+case 'issue_close': {
+const n = num();
+if (!n) return 'error: number required';
+const out = await call('PATCH', '/api/v1/repos/' + repo + '/issues/' + n, { state: 'closed' });
+if (!out || out.error) return out;
+return { number: out.number || n, state: out.state || 'closed' };
+}
+case 'pulls': {
+const out = await call('GET', '/api/v1/repos/' + repo + '/pulls?state=' + stateOf() + '&limit=' + lim());
+if (!Array.isArray(out)) return out;
+return out.slice(0, 50).map(slimPull);
+}
+case 'pull': {
+const n = num();
+if (!n) return 'error: number required';
+const out = await call('GET', '/api/v1/repos/' + repo + '/pulls/' + n);
+if (!out || out.error) return out;
+return { ...slimPull(out), mergeable: !!out.mergeable, body: cap(out.body, 4000) };
+}
+case 'pull_create': {
+const head = cap(args.head, 120).trim();
+const baseBranch = cap(args.base, 120).trim();
+const title = cap(args.title, 200).trim();
+if (!head) return 'error: head branch required';
+if (!baseBranch) return 'error: base branch required';
+if (!title) return 'error: title required';
+const out = await call('POST', '/api/v1/repos/' + repo + '/pulls', {
+head: head,
+base: baseBranch,
+title: title,
+body: cap(args.body, 8000)
+});
+if (!out || out.error) return out;
+return { number: out.number || 0, html_url: out.html_url || '' };
+}
+case 'pull_merge': {
+const n = num();
+if (!n) return 'error: number required';
+const out = await call('POST', '/api/v1/repos/' + repo + '/pulls/' + n + '/merge', { Do: 'merge' });
+if (out && out.error) return out;
+return { merged: true };
+}
+case 'runs': {
+const out = await call('GET', '/api/v1/repos/' + repo + '/actions/tasks?limit=' + lim());
+if (!out || out.error) return out;
+const list = Array.isArray(out) ? out : out.workflow_runs || [];
+if (!Array.isArray(list)) return list;
+const keep = ['id', 'name', 'title', 'status', 'conclusion', 'event', 'head_branch', 'head_sha', 'html_url', 'created_at', 'updated_at'];
+return list.slice(0, 20).map((r) => {
+if (!r || typeof r !== 'object') return r;
+const slim = {};
+for (const k of keep) if (r[k] !== undefined) slim[k] = typeof r[k] === 'string' ? r[k].slice(0, 200) : r[k];
+return slim;
+});
+}
+case 'releases': {
+const out = await call('GET', '/api/v1/repos/' + repo + '/releases?limit=' + lim());
+if (!Array.isArray(out)) return out;
+return out.slice(0, 20).map((r) => ({
+tag_name: r.tag_name || '',
+name: r.name || '',
+draft: !!r.draft,
+prerelease: !!r.prerelease,
+html_url: r.html_url || '',
+created: r.created_at || ''
+}));
+}
+default:
+return 'error: unknown action (repo|branches|commits|issues|issue|issue_create|issue_comment|comments|issue_close|pulls|pull|pull_create|pull_merge|runs|releases)';
+}`
 	}
 ];
 
@@ -1410,6 +1695,54 @@ export async function elevenlabsPhoneNumbers(pluginId: string): Promise<ElevenLa
 				agent && typeof agent === 'object'
 					? String((agent as Record<string, unknown>).agent_id ?? '')
 					: ''
+		};
+	});
+}
+
+/* ------------------------------------------------------------------ */
+/* Forgejo repos                                                       */
+/* ------------------------------------------------------------------ */
+
+export interface ForgejoRepo {
+	full_name: string;
+	private: boolean;
+	default_branch: string;
+}
+
+/**
+ * The token owner's repos, for the default-repo picker: owner/name is not
+ * guessable from the dashboard URL alone, so the page reads it out of the
+ * API with the stored token.
+ */
+export async function forgejoRepos(pluginId: string): Promise<ForgejoRepo[]> {
+	const plugin = getPlugin(pluginId);
+	if (!plugin) throw error(404, 'connector not found');
+	const def = connectorOf(plugin);
+	if (def?.id !== 'forgejo') throw error(400, 'not the forgejo connector');
+	const values = decryptedConfig(plugin);
+	const base = String(values.base_url ?? '').replace(/\/+$/, '');
+	const token = String(values.token ?? '');
+	if (!base) throw error(400, 'set the Forgejo base URL first');
+	if (!token) throw error(400, 'set the Forgejo API token first');
+	let res: Response;
+	try {
+		res = await fetch(`${base}/api/v1/user/repos?limit=50`, {
+			headers: { Authorization: `token ${token}` },
+			signal: AbortSignal.timeout(15_000)
+		});
+	} catch (e) {
+		throw error(502, `Forgejo unreachable: ${(e as Error).message}`);
+	}
+	if (!res.ok) throw error(502, `Forgejo answered ${res.status}`);
+	const data: unknown = await res.json().catch(() => null);
+	if (!Array.isArray(data)) return [];
+	return data.slice(0, 100).map((raw) => {
+		const r: Record<string, unknown> =
+			raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+		return {
+			full_name: String(r.full_name ?? ''),
+			private: !!r.private,
+			default_branch: String(r.default_branch ?? '')
 		};
 	});
 }
