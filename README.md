@@ -506,6 +506,21 @@ LLM_API_KEY=sk-…
 LLM_MODEL=deepseek-flash
 ```
 
+Voice output comes from a Wyoming Piper server when one is configured:
+
+```env
+# The Home Assistant guest's wyoming-piper container, for example.
+PIPER_HOST=192.168.69.81
+PIPER_PORT=10200
+# One installed voice; unset means the first English voice the server has.
+PIPER_VOICE=en_GB-alan-medium
+```
+
+With Piper set, the read-aloud button on each reply plays server-rendered
+audio; without it (or when the server cannot be reached) the button falls
+back to the browser's own speech synthesis. Voice input is the microphone
+button in the composer (browser speech recognition, Chrome/Edge).
+
 </details>
 ## Provenance
 

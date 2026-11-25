@@ -474,22 +474,69 @@
 	/** Which message is being read aloud, so the button can show it. */
 	let speakingId = $state('');
 
-	/** Read a reply out with the browser's speech synthesis. */
-	function speak(m: Message) {
-		if (!('speechSynthesis' in window)) return;
+	/** The Piper audio in flight, if the read-aloud is server-rendered. */
+	let serverAudio: HTMLAudioElement | null = null;
+
+	function stopAudio() {
+		serverAudio?.pause();
+		serverAudio = null;
+		window.speechSynthesis?.cancel();
+	}
+
+	/** Read a reply out: the household Piper voice when configured, falling
+	 * back to the browser's speech synthesis when the lounge has no voice
+	 * server (or it cannot be reached) - a silent button is worse than a
+	 * robotic one. */
+	async function speak(m: Message) {
 		if (speakingId === m.id) {
-			window.speechSynthesis.cancel();
+			stopAudio();
 			speakingId = '';
 			return;
 		}
-		window.speechSynthesis.cancel();
-		const utterance = new SpeechSynthesisUtterance(
-			bodyOf(m).replace(/```[\s\S]*?```/g, ' code block ').replace(/[*_`#>]/g, '')
-		);
-		utterance.onend = () => (speakingId = '');
-		utterance.onerror = () => (speakingId = '');
+		stopAudio();
 		speakingId = m.id;
-		window.speechSynthesis.speak(utterance);
+		const text = bodyOf(m)
+			.replace(/```[\s\S]*?```/g, ' code block ')
+			.replace(/[*_`#>]/g, '')
+			.trim()
+			.slice(0, 1000);
+		if (!text) {
+			speakingId = '';
+			return;
+		}
+		try {
+			const res = await fetch('/api/tts', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ text })
+			});
+			if (!res.ok) throw new Error(`tts ${res.status}`);
+			const url = URL.createObjectURL(await res.blob());
+			const audio = new Audio(url);
+			serverAudio = audio;
+			audio.onended = () => {
+				URL.revokeObjectURL(url);
+				if (serverAudio === audio) serverAudio = null;
+				if (speakingId === m.id) speakingId = '';
+			};
+			audio.onerror = () => {
+				URL.revokeObjectURL(url);
+				if (serverAudio === audio) serverAudio = null;
+				if (speakingId === m.id) speakingId = '';
+			};
+			await audio.play();
+		} catch {
+			if (speakingId !== m.id) return;
+			serverAudio = null;
+			if (!('speechSynthesis' in window)) {
+				speakingId = '';
+				return;
+			}
+			const utterance = new SpeechSynthesisUtterance(text);
+			utterance.onend = () => (speakingId = '');
+			utterance.onerror = () => (speakingId = '');
+			window.speechSynthesis.speak(utterance);
+		}
 	}
 
 	// The voice belongs to the thread it was reading: leaving the chat - or the
@@ -497,7 +544,7 @@
 	$effect(() => {
 		chat.activeId;
 		return () => {
-			window.speechSynthesis?.cancel();
+			stopAudio();
 			speakingId = '';
 		};
 	});
