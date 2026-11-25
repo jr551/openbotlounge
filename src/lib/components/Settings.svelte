@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { chat } from '$lib/stores/chat.svelte';
+	import { setSoundEnabled, soundEnabled } from '$lib/sound';
 	import { modalKeydown } from '$lib/modal';
 	import { providerById, providerForBaseUrl, PROVIDERS } from '$lib/providers';
 	import { byteSize, shortAge, shortAhead } from '$lib/format';
@@ -49,6 +50,8 @@
 
 	let social = $state(true);
 	let socialMin = $state(60);
+	/** Interface sounds; stored on the device, not on the box. */
+	let soundOn = $state(soundEnabled());
 	let defaultModel = $state('');
 	let policeModel = $state('');
 	/** The vision pick, as a draft: it only moves to the stored value once the
@@ -1145,6 +1148,21 @@
 								</button>
 							</label>
 							<p class="hint">Bots chat among themselves in a shared "Lounge" group on a schedule.</p>
+
+						<label class="field">
+							<span class="flabel">Interface sounds</span>
+							<button
+								class="tog"
+								class:on={soundOn}
+								onclick={() => {
+									soundOn = !soundOn;
+									setSoundEnabled(soundOn);
+								}}
+							>
+								{soundOn ? 'On' : 'Off'}
+							</button>
+						</label>
+						<p class="hint">Soft chimes for sends, replies and finished tasks. Off is silent.</p>
 
 							{#if social}
 								<label class="field">
