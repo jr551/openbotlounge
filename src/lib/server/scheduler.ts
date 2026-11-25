@@ -12,6 +12,7 @@ import {
 	getConversation,
 	getMessage,
 	getRatingReaction,
+	getRoutine,
 	listActivities,
 	listBots,
 	listVisibleBots,
@@ -172,6 +173,50 @@ function postFiring(convId: string, content: string): void {
 	addMessage(convId, 'user', content, '', '', 0, 'app');
 }
 
+/** The firing line a routine run posts: the prompt plus the sign-off footer. */
+export function routineFiringText(routine: { id: string; name: string; prompt: string; created_by: string }, note = ''): string {
+	return (
+		`[Routine: ${routine.name}] ${routine.prompt}\n` +
+		(note ? `[Webhook] ${note}\n` : '') +
+		`Routine id: ${routine.id}, created by ${routine.created_by === 'human' ? 'the human' : 'you'}. ` +
+		`If there is nothing to report, reply with exactly ` +
+		'(silent) and nothing else. If this check can never succeed or is no longer needed, ' +
+		`cancel it now with schedules(cancel: "${routine.id}") - but do not ` +
+		'cancel a routine the human made unless it is clearly broken.'
+	);
+}
+
+/**
+ * Fire one routine right now: post its prompt and start a turn. Shared by the
+ * schedule tick and routine webhooks, so a webhook fires exactly what the
+ * clock would. Returns the task id, or null when there is nothing to run (no
+ * bot or conversation, a switched-off routine, a paused bot). Missing and
+ * paused rows are rescheduled the way the tick would, so a webhook ping
+ * neither strands nor double-books the schedule.
+ */
+export function runRoutineNow(routineId: string, note = ''): string | null {
+	const routine = getRoutine(routineId);
+	if (!routine) return null;
+	const bot = getBot(routine.bot_id);
+	const conv = bot ? getConversation(routine.conversation_id) : undefined;
+	if (!bot || !conv) {
+		rescheduleRoutine(routine.id, nextRoutineRun(routine));
+		return null;
+	}
+	if (!routine.enabled) return null;
+	const paused = botPausedUntil(bot.id, listSettings());
+	if (paused > Date.now()) {
+		rescheduleRoutine(routine.id, paused);
+		return null;
+	}
+	logActivity(bot.id, 'routine', `Running routine "${routine.name}"`);
+	// Marked as the app speaking, so a watch for a person's words does not
+	// wake on this bot's own routine. The turn runs as a task so the tray and
+	// the stats see its spend like any other turn's.
+	postFiring(conv.id, routineFiringText(routine, note));
+	return startTask(conv, bot, `[Routine: ${routine.name}] ${routine.prompt}`).id;
+}
+
 
 /** One pass of the loop. Exported so tests can drive it without real timers. */
 export async function tick() {
@@ -184,40 +229,19 @@ export async function tick() {
 		// sweep - still runs.
 		const set = listSettings();
 		for (const routine of dueRoutines(Date.now())) {
-			const bot = getBot(routine.bot_id);
-			const conv = bot ? getConversation(routine.conversation_id) : undefined;
-			const paused = bot ? botPausedUntil(bot.id, set) : 0;
-			if (!bot || !conv) {
-				rescheduleRoutine(routine.id, nextRoutineRun(routine));
-				continue;
-			}
-			if (paused > Date.now()) {
-				rescheduleRoutine(routine.id, paused);
-				continue;
-			}
-			logActivity(bot.id, 'routine', `Running routine "${routine.name}"`);
+			// The firing itself is shared with routine webhooks, so a POST fires
+			// exactly what the clock would. Skips (missing, paused, off) are
+			// already rescheduled inside and need nothing more here.
 			try {
-				// Post the routine prompt as a user message, then let the bot answer.
-				// Marked as the app speaking, so a watch for a person's words does
-				// not wake on this bot's own routine. The turn runs as a task so the
-				// tray and the stats see its spend like any other turn's.
-				postFiring(
-					conv.id,
-					`[Routine: ${routine.name}] ${routine.prompt}\n` +
-						`Routine id: ${routine.id}, created by ${routine.created_by === 'human' ? 'the human' : 'you'}. ` +
-						`If there is nothing to report, reply with exactly ` +
-						'(silent) and nothing else. If this check can never succeed or is no longer ' +
-						`needed, cancel it now with schedules(cancel: "${routine.id}") - but do not ` +
-						'cancel a routine the human made unless it is clearly broken.'
-				);
-				const task = startTask(conv, bot, `[Routine: ${routine.name}] ${routine.prompt}`);
-				await waitForTask(task.id);
+				const taskId = runRoutineNow(routine.id);
+				if (!taskId) continue;
+				await waitForTask(taskId);
 				// The run is recorded when it starts and again when it ends, so a
 				// watch can wait for either - "my nightly routine has finished" was
 				// otherwise an event with nothing in the database to see.
-				logActivity(bot.id, 'routine', `Finished routine "${routine.name}"`);
+				logActivity(routine.bot_id, 'routine', `Finished routine "${routine.name}"`);
 			} catch (e) {
-				logActivity(bot.id, 'error', `Routine "${routine.name}" failed: ${(e as Error).message}`);
+				logActivity(routine.bot_id, 'error', `Routine "${routine.name}" failed: ${(e as Error).message}`);
 			}
 			rescheduleRoutine(routine.id, nextRoutineRun(routine));
 		}

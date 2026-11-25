@@ -5,6 +5,7 @@ import {
 	deleteWebhook,
 	getBot,
 	getConversation,
+	getWebhookByRoutine,
 	getWebhookByToken,
 	listWebhooks,
 	logActivity,
@@ -12,6 +13,8 @@ import {
 } from './db';
 import { startTask } from './tasks';
 import { fireWatchByToken } from './wake';
+import { getRoutine } from './db';
+import { runRoutineNow } from './scheduler';
 
 // Re-exported so the API layer only needs this module.
 export { deleteWebhook, listWebhooks };
@@ -21,21 +24,33 @@ export function webhookUrl(token: string): string {
 	return `/api/hooks/${token}`;
 }
 
-/** Register a webhook that wakes the bot in the given conversation. */
+/**
+ * Register a webhook that wakes the bot in the given conversation - or, with
+ * a routine id, one that runs that routine instead. The routine keeps its own
+ * prompt and conversation; the template only applies to plain webhooks.
+ */
 export function createWebhook(
 	botId: string,
 	conversationId: string,
 	name: string,
-	promptTemplate = ''
+	promptTemplate = '',
+	routineId = ''
 ): Webhook {
+	if (routineId && !getRoutine(routineId)) throw new Error('no such routine');
 	return insertWebhook({
 		token: randomUUID(),
 		bot_id: botId,
 		conversation_id: conversationId,
 		name,
 		prompt_template: promptTemplate,
-		enabled: 1
+		enabled: 1,
+		routine_id: routineId
 	});
+}
+
+/** The webhook bound to a routine, if it has one. */
+export function routineWebhook(routineId: string): Webhook | undefined {
+	return getWebhookByRoutine(routineId);
 }
 
 /**
@@ -51,6 +66,15 @@ export async function fireWebhook(token: string, payload: string): Promise<boole
 		if (await fireWatchByToken(token, payload)) return true;
 		const hook = getWebhookByToken(token);
 		if (!hook || !hook.enabled) return false;
+		// A routine-bound hook runs that routine - the same firing the clock
+		// would produce, plus the POST body as a note. A switched-off routine
+		// refuses the same way a disabled hook does.
+		if (hook.routine_id) {
+			const taskId = runRoutineNow(hook.routine_id, payload.slice(0, 500));
+			if (!taskId) return false;
+			logActivity(hook.bot_id, 'webhook', `Webhook "${hook.name}" fired its routine`);
+			return true;
+		}
 		const bot = getBot(hook.bot_id);
 		const conv = getConversation(hook.conversation_id);
 		if (!bot || !conv) return false;

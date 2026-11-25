@@ -1169,6 +1169,110 @@ const deskLine = $derived.by(() => {
 		editError = '';
 	}
 
+	/**
+	 * One inbound URL per routine: POSTing anything there runs that routine
+	 * now. Created and revoked here; the row's toggle only flips the schedule,
+	 * and a switched-off routine refuses the hook the way a missing one does.
+	 */
+	let hookOpenId = $state('');
+	let hookFor = $state<Record<string, { url: string } | null>>({});
+	let hookBusy = $state(false);
+	let hookError = $state('');
+	let hookNote = $state('');
+	let hookCopied = $state(false);
+
+	function hookUrl(id: string): string {
+		const h = hookFor[id];
+		if (!h) return '';
+		return typeof window === 'undefined' ? h.url : window.location.origin + h.url;
+	}
+
+	async function toggleHook(id: string) {
+		if (hookOpenId === id) {
+			hookOpenId = '';
+			return;
+		}
+		hookOpenId = id;
+		hookError = '';
+		hookNote = '';
+		hookCopied = false;
+		if (!(id in hookFor)) await loadHook(id);
+	}
+
+	async function loadHook(id: string) {
+		hookBusy = true;
+		hookError = '';
+		try {
+			const res = await fetch(`/api/routines/${id}/webhook`);
+			if (!res.ok) throw new Error(`Could not load the webhook (${res.status})`);
+			hookFor[id] = (await res.json()).webhook;
+		} catch (e) {
+			hookError = e instanceof Error ? e.message : 'Could not load the webhook';
+		} finally {
+			hookBusy = false;
+		}
+	}
+
+	async function createHook(id: string) {
+		hookBusy = true;
+		hookError = '';
+		hookNote = '';
+		try {
+			const res = await fetch(`/api/routines/${id}/webhook`, { method: 'POST' });
+			if (!res.ok) throw new Error(`Could not create the webhook (${res.status})`);
+			hookFor[id] = await res.json();
+			hookNote = 'POST anything to that URL to run the routine now.';
+		} catch (e) {
+			hookError = e instanceof Error ? e.message : 'Could not create the webhook';
+		} finally {
+			hookBusy = false;
+		}
+	}
+
+	async function revokeHook(id: string) {
+		hookBusy = true;
+		hookError = '';
+		hookNote = '';
+		try {
+			const res = await fetch(`/api/routines/${id}/webhook`, { method: 'DELETE' });
+			if (!res.ok) throw new Error(`Could not revoke the webhook (${res.status})`);
+			hookFor[id] = null;
+			hookNote = 'Revoked - the old URL is dead.';
+		} catch (e) {
+			hookError = e instanceof Error ? e.message : 'Could not revoke the webhook';
+		} finally {
+			hookBusy = false;
+		}
+	}
+
+	async function fireHook(id: string) {
+		const h = hookFor[id];
+		if (!h || hookBusy) return;
+		hookBusy = true;
+		hookError = '';
+		hookNote = '';
+		try {
+			const res = await fetch(h.url, { method: 'POST', body: '{}' });
+			const body = (await res.json().catch(() => null)) as { ok?: boolean } | null;
+			if (!res.ok || !body?.ok) throw new Error('The routine refused to fire - it may be switched off.');
+			hookNote = 'Fired - the routine is running.';
+		} catch (e) {
+			hookError = e instanceof Error ? e.message : 'Could not fire the routine';
+		} finally {
+			hookBusy = false;
+		}
+	}
+
+	async function copyHook(id: string) {
+		try {
+			await navigator.clipboard.writeText(hookUrl(id));
+		} catch {
+			return;
+		}
+		hookCopied = true;
+		setTimeout(() => (hookCopied = false), 1500);
+	}
+
 	/*
 	 * Save the open row. The schedule is only checked here far enough to answer
 	 * the obvious blank; the route is the judge of cron and interval, and its
@@ -1792,7 +1896,47 @@ const deskLine = $derived.by(() => {
 							<button class="tog" class:on={!!r.enabled} onclick={() => chat.toggleRoutine(r)}>
 								{r.enabled ? 'On' : 'Off'}
 							</button>
+							<button
+								class="tog"
+								class:on={hookOpenId === r.id}
+								title="Inbound webhook - POST its URL to run this routine now"
+								onclick={() => toggleHook(r.id)}
+							>
+								🪝
+							</button>
 							<button class="del" onclick={() => chat.deleteRoutine(r.id)}>✕</button>
+							{#if hookOpenId === r.id}
+								<div class="hook">
+									{#if hookBusy && !(r.id in hookFor)}
+										<span class="rmeta">Loading…</span>
+									{:else if hookFor[r.id]}
+										<code class="hookurl">{hookUrl(r.id)}</code>
+										<div class="ractions">
+											<button class="tog" onclick={() => copyHook(r.id)}>
+												{hookCopied ? 'Copied ✓' : 'Copy'}
+											</button>
+											<button class="tog" disabled={hookBusy} onclick={() => fireHook(r.id)}>
+												Fire now
+											</button>
+											<button class="tog" disabled={hookBusy} onclick={() => revokeHook(r.id)}>
+												Revoke
+											</button>
+										</div>
+										{#if hookNote}<span class="rmeta">{hookNote}</span>{/if}
+									{:else}
+										<span class="rmeta">
+											No webhook yet. POSTing its URL runs this routine now, on top of
+											the schedule - a switched-off routine refuses it.
+										</span>
+										<div class="ractions">
+											<button class="tog" disabled={hookBusy} onclick={() => createHook(r.id)}>
+												Create webhook URL
+											</button>
+										</div>
+									{/if}
+									{#if hookError}<div class="rerr">{hookError}</div>{/if}
+								</div>
+							{/if}
 						{/if}
 					</div>
 				{/each}
@@ -2777,11 +2921,38 @@ const deskLine = $derived.by(() => {
 	.routine {
 		display: flex;
 		align-items: center;
+		flex-wrap: wrap;
 		gap: 0.5rem;
 		padding: 0.45rem 0.6rem;
 		background: var(--bg-raised);
 		border: 1px solid var(--border);
 		border-radius: 0.55rem;
+	}
+	/* The routine's webhook panel drops below the row it belongs to. */
+	.hook {
+		flex: 1 1 100%;
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+		border-top: 1px solid var(--border);
+		padding-top: 0.45rem;
+		margin-top: 0.1rem;
+	}
+	.hookurl {
+		font-size: 0.72rem;
+		word-break: break-all;
+		background: var(--bg);
+		border-radius: 0.4rem;
+		padding: 0.35rem 0.5rem;
+		color: var(--text);
+		font-family: inherit;
+	}
+	.hook .ractions {
+		justify-content: flex-start;
+	}
+	.hook .rerr {
+		font-size: 0.72rem;
+		color: var(--danger);
 	}
 	.rinfo {
 		flex: 1;

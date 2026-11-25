@@ -1,7 +1,16 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createBot, createConversation, deleteWebhook, listMessages, listWebhooks } from './db';
+import {
+	createBot,
+	createConversation,
+	createRoutine,
+	deleteWebhook,
+	getRoutine,
+	listMessages,
+	listWebhooks,
+	setRoutineEnabled
+} from './db';
 import { runBotTurn } from './runner';
-import { createWebhook, fireWebhook } from './webhooks';
+import { createWebhook, fireWebhook, routineWebhook } from './webhooks';
 
 vi.mock('./runner', () => ({
 	runBotTurn: vi.fn(async () => ({ text: 'ok', message: null, aborted: false, stoppedBy: '' }))
@@ -60,5 +69,61 @@ describe('fireWebhook', () => {
 		await expect(fireWebhook('not-a-real-token', 'x')).resolves.toBe(false);
 		expect(runBotTurn).not.toHaveBeenCalled();
 		expect(contents()).toHaveLength(before);
+	});
+});
+
+describe('routine webhooks', () => {
+	function makeRoutine(prompt = 'check the thing') {
+		return createRoutine({
+			bot_id: botId,
+			conversation_id: convId,
+			name: 'Webhookable',
+			prompt,
+			interval_min: 60,
+			cron: '',
+			enabled: 1
+		});
+	}
+
+	it('creates, finds and revokes a routine-bound webhook', () => {
+		const routine = makeRoutine();
+		expect(routineWebhook(routine.id)).toBeUndefined();
+		expect(getRoutine(routine.id)?.name).toBe('Webhookable');
+		const hook = createWebhook(botId, convId, 'Routine "Webhookable"', '', routine.id);
+		expect(routineWebhook(routine.id)?.token).toBe(hook.token);
+		expect(deleteWebhook(hook.id)).toBe(true);
+		expect(routineWebhook(routine.id)).toBeUndefined();
+	});
+
+	it('refuses to bind a webhook to a missing routine', () => {
+		expect(() => createWebhook(botId, convId, 'Ghost', '', 'no-such-routine')).toThrow(/no such routine/);
+	});
+
+	it('fires the routine with the payload as a note', async () => {
+		const routine = makeRoutine('watch the gauges');
+		const hook = createWebhook(botId, convId, 'Routine "Webhookable"', '', routine.id);
+		const before = contents().length;
+		await expect(fireWebhook(hook.token, 'pressure nominal')).resolves.toBe(true);
+		const posted = listMessages(convId).slice(before).map((m) => m.content);
+		expect(posted.some((c) => c.startsWith('[Routine: Webhookable] watch the gauges'))).toBe(true);
+		expect(posted.some((c) => c.includes('[Webhook] pressure nominal'))).toBe(true);
+		expect(runBotTurn).toHaveBeenCalled();
+	});
+
+	it('refuses to fire a switched-off routine', async () => {
+		const routine = makeRoutine();
+		setRoutineEnabled(routine.id, false);
+		const hook = createWebhook(botId, convId, 'Routine "Webhookable"', '', routine.id);
+		const before = contents().length;
+		await expect(fireWebhook(hook.token, 'go')).resolves.toBe(false);
+		expect(listMessages(convId)).toHaveLength(before);
+		expect(runBotTurn).not.toHaveBeenCalled();
+		setRoutineEnabled(routine.id, true);
+	});
+
+	it('a plain webhook still wakes the bot', async () => {
+		const hook = createWebhook(botId, convId, 'Deploy');
+		await expect(fireWebhook(hook.token, 'finished')).resolves.toBe(true);
+		expect(contents()).toContain('[Webhook Deploy] finished');
 	});
 });

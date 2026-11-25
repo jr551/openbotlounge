@@ -1,6 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { deleteRoutine, listRoutines, setRoutineEnabled, updateRoutine } from '$lib/server/db';
+import { deleteRoutine, getWebhookByRoutine, deleteWebhook, listRoutines, setRoutineEnabled, updateRoutine } from '$lib/server/db';
 import { nextCronRun } from '$lib/server/wake';
 import { boolField, numField, readJson, strField } from '$lib/server/http';
 
@@ -64,5 +64,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 
 export const DELETE: RequestHandler = ({ params }) => {
 	if (!deleteRoutine(params.id)) throw error(404, 'no such routine');
+	// A bound webhook without its routine would 404 every POST, so revoking it
+	// here keeps the hook list honest.
+	const hook = getWebhookByRoutine(params.id);
+	if (hook) deleteWebhook(hook.id);
 	return new Response(null, { status: 204 });
 };

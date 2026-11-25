@@ -401,6 +401,9 @@ CREATE TABLE IF NOT EXISTS webhooks (
   name            TEXT NOT NULL,
   prompt_template TEXT NOT NULL DEFAULT '',
   enabled         INTEGER NOT NULL DEFAULT 1,
+  -- The routine this hook fires, when it belongs to a routine; '' = a plain
+  -- wake-the-bot webhook. Added after the table, so see ADDED_COLUMNS.
+  routine_id      TEXT NOT NULL DEFAULT '',
   created_at      INTEGER NOT NULL
 );
 
@@ -720,6 +723,8 @@ const ADDED_COLUMNS: [table: string, column: string, ddl: string][] = [
 		'ALTER TABLE conversations ADD COLUMN private INTEGER NOT NULL DEFAULT 0'
 	],
 	['activities', 'image', `ALTER TABLE activities ADD COLUMN image TEXT NOT NULL DEFAULT ''`],
+	// A webhook can belong to a routine: POSTing its URL runs that routine now.
+	['webhooks', 'routine_id', `ALTER TABLE webhooks ADD COLUMN routine_id TEXT NOT NULL DEFAULT ''`],
 	// A screenshot a bot sent into the thread: the message names the shot the
 	// same way an activity does, so one file serves both views.
 	['messages', 'image', `ALTER TABLE messages ADD COLUMN image TEXT NOT NULL DEFAULT ''`],
@@ -2594,6 +2599,11 @@ export function listRoutines(botId?: string): Routine[] {
 	return listForBot<Routine>('routines', 'next_run_at ASC', botId);
 }
 
+export function getRoutine(id: string): Routine | undefined {
+	if (!id) return undefined;
+	return db.prepare('SELECT * FROM routines WHERE id = ?').get(id) as unknown as Routine | undefined;
+}
+
 export function createRoutine(
 	r: Omit<Routine, 'id' | 'created_at' | 'next_run_at' | 'paused_reason' | 'verification' | 'created_by'> & {
 		next_run_at?: number;
@@ -3674,13 +3684,15 @@ export interface Webhook {
 	name: string;
 	prompt_template: string;
 	enabled: number;
+	/** The routine this hook fires; '' = a plain wake-the-bot webhook. */
+	routine_id: string;
 	created_at: number;
 }
 
-export function createWebhook(w: Omit<Webhook, 'id' | 'created_at'>): Webhook {
-	const webhook: Webhook = { ...w, id: randomUUID(), created_at: Date.now() };
+export function createWebhook(w: Omit<Webhook, 'id' | 'created_at' | 'routine_id'> & { routine_id?: string }): Webhook {
+	const webhook: Webhook = { ...w, routine_id: w.routine_id ?? '', id: randomUUID(), created_at: Date.now() };
 	db.prepare(
-		'INSERT INTO webhooks (id, token, bot_id, conversation_id, name, prompt_template, enabled, created_at) VALUES (?,?,?,?,?,?,?,?)'
+		'INSERT INTO webhooks (id, token, bot_id, conversation_id, name, prompt_template, enabled, routine_id, created_at) VALUES (?,?,?,?,?,?,?,?,?)'
 	).run(
 		webhook.id,
 		webhook.token,
@@ -3689,6 +3701,7 @@ export function createWebhook(w: Omit<Webhook, 'id' | 'created_at'>): Webhook {
 		webhook.name,
 		webhook.prompt_template,
 		webhook.enabled,
+		webhook.routine_id,
 		webhook.created_at
 	);
 	return webhook;
@@ -3696,6 +3709,12 @@ export function createWebhook(w: Omit<Webhook, 'id' | 'created_at'>): Webhook {
 
 export function getWebhookByToken(token: string): Webhook | undefined {
 	return getRow<Webhook>('webhooks', 'token', token);
+}
+
+/** The webhook bound to a routine, if the routine has one. */
+export function getWebhookByRoutine(routineId: string): Webhook | undefined {
+	if (!routineId) return undefined;
+	return getRow<Webhook>('webhooks', 'routine_id', routineId);
 }
 
 export function listWebhooks(botId?: string): Webhook[] {
