@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.3.0 — 2026-11-25
+
+### Dependency upgrades
+
+In-range upgrades plus security pins. Verified: `npm run check` (0 errors),
+`npm test` (1257 passed), `npm run build`.
+
+| Package | From | To |
+|---------|------|-----|
+| `@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent` | 1.4.0 | 1.4.0 (held — see below) |
+| `@humanspeak/svelte-markdown` | 2.1.3 | 2.3.0 |
+| `@sveltejs/kit` | 2.70.3 | 2.70.4 |
+| `@sveltejs/adapter-node` | 5.5.7 | 5.5.8 |
+| `@sveltejs/vite-plugin-svelte` | 7.3.1 | 7.3.2 |
+| `@types/node` | 26.6.5 | 26.6.10 |
+| `svelte` | 5.57.2 | 5.59.1 |
+| `svelte-check` | 4.7.7 | 4.7.8 |
+| `vite` | 8.3.5 | 8.3.8 |
+| `vitest` | 5.0.5 | 5.1.2 |
+| `cookie` (new pin + override) | transitive <0.7.0 | 0.7.2 |
+| `deepmerge` (new pin + override) | transitive | 4.3.1 |
+| `undici` (new pin + override) | transitive | 8.13.1 |
+
+### Deliberately not upgraded
+
+- **`@earendil-works/pi-ai` / `pi-coding-agent` 1.5–1.6** — 1.6 removes the `Type`/`TSchema` exports `pi-bridge.ts` uses and hangs 88 agent-loop tests (tasks, runner, budgets, llm). Held on exact `1.4.0`; the 1.6 migration is a code-adaptation job, not a bump.
+- **`@sveltejs/kit` 3.x**, **`@sveltejs/adapter-node` 6.x**, **`typescript` 7.x** — as in 0.2.0 (kit 3 needs the `$lib` → `#lib` migration).
+
+### Advisories
+
+- Cleared the `cookie` line via the 0.7.2 override.
+- **4 remain** (1 low, 2 moderate, 1 high): the kit GHSA set and bundled `minimatch`, all fixable only via the breaking upgrades above.
+
+### Also in this release
+
+- Machine first-boot toolset install retries 5× (egress proxy race).
+- Police draft parser tolerates `**DESCRIPTION**` / `**PERSONA**` markers; personless-bot police DM is created, not dropped.
+- Install guide: systemd route documents the Docker engine, `EnvironmentFile`, and DeepSeek.
+- CI: gitleaks image pull retries 5× against ghcr.io TLS flakes.
+
 ## 0.2.0 — 2026-10-22
 
 ### Dependency upgrades
