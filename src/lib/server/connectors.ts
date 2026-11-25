@@ -570,9 +570,8 @@ switch (args.action) {
 		configFields: [
 			{
 				key: 'tailnet',
-				label: 'Tailnet name',
-				placeholder: 'example.com (or - for default)',
-				required: true
+				label: 'Tailnet name (only needed for admin API calls)',
+				placeholder: 'blank = default tailnet'
 			},
 			{
 				key: 'auth_key',
@@ -585,7 +584,7 @@ switch (args.action) {
 			{ key: 'client_id', label: 'OAuth client ID', placeholder: 'optional' },
 			{ key: 'client_secret', label: 'OAuth client secret', secret: true }
 		],
-		ready: (v) => !!v.tailnet && !!v.auth_key,
+		ready: (v) => !!v.auth_key,
 		parameters: {
 			type: 'object',
 			properties: {

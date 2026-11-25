@@ -326,6 +326,19 @@ describe('elevenlabs phone calls', () => {
 	});
 });
 
+describe('tailscale needs only its auth key', () => {
+	it('configures with tailnet left blank', () => {
+		const view = installConnector('tailscale');
+		expect(view.configured).toBe(false);
+		expect(view.fields.find((f) => f.key === 'tailnet')?.required).toBeFalsy();
+		const after = updateConnector(view.plugin_id, {
+			values: { tailnet: '', auth_key: 'tskey-auth-test' }
+		});
+		expect(after.configured).toBe(true);
+		uninstallConnector(view.plugin_id);
+	});
+});
+
 describe('elevenlabs install and account lookup', () => {
 	afterEach(() => vi.unstubAllGlobals());
 
