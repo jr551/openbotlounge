@@ -970,8 +970,11 @@
 		return oneLine(t.title || t.prompt, 60);
 	}
 
-	/** The typing bot the view has already followed down, so it follows once. */
-	let followedTyping = '';
+	/** What the follow effect below has already scrolled to: whose bubble, and
+	 *  how much of it. Growth scrolls; anything else (a re-run with the same
+	 *  text, another bot taking over) is judged on the id. */
+	let followedId = '';
+	let followedLen = 0;
 
 	/**
 	 * The kinds that mean a bot is driving its computer rather than composing.
@@ -1102,19 +1105,25 @@
 	}
 
 	/**
-	 * The typing bubble is a brand-new last row, so a reader sitting at the bottom
-	 * is pushed off it the moment a bot starts composing - the list only follows
-	 * messages that arrive. Follow it down too, but only from the bottom: scrolled
-	 * up, the reader is reading, and the row can wait below the fold.
+	 * The typing bubble grows without touching chat.messages - previews land in
+	 * their own store - so the message effect never fires mid-turn and the view
+	 * would sit still while the bubble grows below the fold. Follow the
+	 * bubble's own growth instead, but only from the bottom: scrolled up, the
+	 * reader is reading, and the row can wait below the fold.
 	 */
 	$effect(() => {
+		// Subscribing to the length (not the string) re-runs the effect only
+		// when words actually land, not on every unrelated re-render.
+		const len = composingText.length;
 		const id = typingBot?.id ?? '';
-		if (!id) {
-			followedTyping = '';
+		if (!id || !atBottom) {
+			followedId = id;
+			followedLen = len;
 			return;
 		}
-		if (id === followedTyping || !atBottom) return;
-		followedTyping = id;
+		if (id === followedId && len === followedLen) return;
+		followedId = id;
+		followedLen = len;
 		void tick().then(() => {
 			if (container) container.scrollTop = container.scrollHeight;
 		});
@@ -1921,10 +1930,14 @@
 									<span class="rx" title="Reply characters received so far">RX {composingText.length}</span>
 								</span>
 							</div>
-							<!-- The reply as it is being written. The words arrive per delta
-							     and the whole composing row goes when the turn ends, so the
-							     finished message replaces this text rather than joining it. -->
-							<div class="partial">{composingText}</div>
+							<!-- The reply as it is being written, formatted live so the
+							     finished message arrives looking the way it streamed -
+							     no raw-markdown flash that hydrates on landing. The
+							     whole composing row goes when the turn ends, so the
+							     finished message replaces this text rather than
+							     joining it. Mentions chip only on the landed
+							     message; mid-stream they stay plain words. -->
+							<div class="partial"><Markdown source={composingText} /></div>
 						{:else}
 							<div class="thinking">
 								<!-- Waiting on the AI gateway: a little planet that flashes
@@ -3297,11 +3310,16 @@
 	/* The live partial reply: the words as they arrive, wrapped like the message
 	   they are becoming. The tail is bounded server-side, so no height cap. */
 	.partial {
-		white-space: pre-wrap;
 		overflow-wrap: break-word;
 		text-align: left;
 		font-size: 0.9rem;
 		line-height: 1.45;
+	}
+	/* The partial renders real markdown, not source: the wrapper's pre-wrap
+	   must not leak into it or every soft wrap becomes a hard break. */
+	.partial > :global(.md) {
+		white-space: normal;
+		font-size: 0.9rem;
 	}
 	/* A thin rail under the bubble's line: filled to the computer sub-agent's
 	   step fraction, or shimmering when there is no number to show. */
