@@ -59,6 +59,15 @@ jobs:
       # excluding test files, so a real key in a test is still caught.
       - name: gitleaks
         run: |
+          # The ephemeral runners occasionally hit TLS timeouts against
+          # ghcr.io; retry the pull instead of failing the scan on a flake.
+          # (2026-10-30: secret scan failed with exit 125 on a TLS handshake
+          # timeout fetching ghcr.io/gitleaks/gitleaks:v8.30.1.)
+          for i in 1 2 3 4 5; do
+            docker pull ghcr.io/gitleaks/gitleaks:v8.30.1 && break
+            echo "gitleaks pull attempt $i failed, retrying in 15s"
+            sleep 15
+          done
           docker run --rm -v "$PWD:/repo" \
             ghcr.io/gitleaks/gitleaks:v8.30.1 \
             detect --source=/repo --no-git \
