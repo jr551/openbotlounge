@@ -478,8 +478,33 @@ versioned `builds/<id>` directory and repoints the `build` symlink atomically,
 so the running process's modules never vanish mid-flight; the script then
 restarts the service when the unit exists. Docker Compose is the supported
 shape for anyone else; the service file approach works because the only hard
-requirements are Node 24+, a reachable Docker socket, and a writable
+requirements are Node 24+, a Docker engine, the env file, and a writable
 `DATA_DIR`.
+
+Three things a fresh box needs beyond the clone:
+
+```bash
+# 1. A Docker engine: every bot's machine is a container, and without a
+#    daemon the Wake button fails with `connect ENOENT /var/run/docker.sock`.
+apt install docker.io
+systemctl enable --now docker
+docker pull alpine:latest              # the image each bot gets as its computer
+
+# 2. The env file, copied from .env.example and filled in. `node build` does
+#    not read `.env` the way `vite dev` does, so the unit must load it:
+#    EnvironmentFile=/opt/openbotlounge/.env
+cp .env.example .env                   # then set SESSION_SECRET + provider keys
+```
+
+Provider examples for `.env` (any OpenAI-compatible endpoint works):
+
+```env
+# DeepSeek official. The canonical id is versionless — point at
+# https://api.deepseek.com (no /v1) so the app recognises the provider.
+LLM_BASE_URL=https://api.deepseek.com
+LLM_API_KEY=sk-…
+LLM_MODEL=deepseek-flash
+```
 
 </details>
 ## Provenance

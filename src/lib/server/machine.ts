@@ -1012,13 +1012,31 @@ async function ensureTmuxOnce(id: string, botId: string): Promise<void> {
 		// spam came from each racer logging it before any had installed
 		// anything, not from the line being wrong about the work.
 		logActivity(botId, 'sandbox', 'Installing the toolset in the machine (apk: tmux, git, python3, nodejs) - first boot takes a few minutes');
-		const install = await dockerExec(
-			id,
-			['sh', '-lc', `apk add --no-cache ${MACHINE_PACKAGES.join(' ')}`],
-			{ timeoutMs: MACHINE_SETUP_TIMEOUT_MS }
-		);
-		if (install.exitCode !== 0) {
-			throw new Error(`could not install tmux in the machine: ${install.output.slice(-200)}`);
+		// The machine's apk reaches the internet only through the egress
+		// proxy sidecar, which this same wake (re)starts in parallel: on a
+		// first boot the proxy may not be serving yet when apk runs, and
+		// every package then fails as "no such package". Back off and retry
+		// rather than failing the wake on a dependency still coming up.
+		const INSTALL_ATTEMPTS = 5;
+		let install: { output: string; exitCode: number } | null = null;
+		for (let attempt = 1; attempt <= INSTALL_ATTEMPTS; attempt++) {
+			install = await dockerExec(
+				id,
+				['sh', '-lc', `apk add --no-cache ${MACHINE_PACKAGES.join(' ')}`],
+				{ timeoutMs: MACHINE_SETUP_TIMEOUT_MS }
+			);
+			if (install.exitCode === 0) break;
+			if (attempt < INSTALL_ATTEMPTS) {
+				logActivity(
+					botId,
+					'sandbox',
+					`Toolset install attempt ${attempt}/${INSTALL_ATTEMPTS} failed, retrying in 15s`
+				);
+				await delay(15000);
+			}
+		}
+		if (!install || install.exitCode !== 0) {
+			throw new Error(`could not install tmux in the machine: ${(install?.output ?? '').slice(-800)}`);
 		}
 		logActivity(botId, 'sandbox', 'Toolset installed');
 	}

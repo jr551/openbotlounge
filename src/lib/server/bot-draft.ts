@@ -161,19 +161,20 @@ export function createBotFromDraft(draft: BotDraft): Bot {
 	// the officer's own chat is the help line, and the human answers there.
 	if (!bot.persona) {
 		const officer = ensurePoliceBot();
-		const dm = directConversationWith(officer.id);
-		if (dm) {
-			addMessage(
-				dm.id,
-				'assistant',
-				`New bot on the roster: ${bot.name}. What should it do? ` +
-					`Reply here and I'll write its persona.`,
-				officer.id,
-				'',
-				0,
-				''
-			);
-		}
+		// directConversationWith only finds; when the officer has never had a
+		// DM there is nothing to find, and guarding the write on the lookup
+		// silently drops the "reply here" note the human is waiting for.
+		const dm = directConversationWith(officer.id) ?? createConversation([officer.id], 'direct');
+		addMessage(
+			dm.id,
+			'assistant',
+			`New bot on the roster: ${bot.name}. What should it do? ` +
+				`Reply here and I'll write its persona.`,
+			officer.id,
+			'',
+			0,
+			''
+		);
 	}
 	return bot;
 }
@@ -204,11 +205,23 @@ export async function draftBotDescription(
 			],
 			{ effort: 'high', maxTokens: 400, onUsage: meterPoliceCall }
 		);
-		const desc = reply.match(/DESCRIPTION\s*[-:]\s*(.+)/i)?.[1]?.trim() ?? '';
-		const personaMatch = reply.match(/PERSONA\s*[-:]\s*([\s\S]+)/i);
-		const persona = (personaMatch?.[1] ?? (desc ? '' : reply)).trim().slice(0, BOT_PERSONA_MAX);
-		return { description: desc.slice(0, 200), persona };
+		return parseDraftReply(reply);
 	} catch {
 		return { description: '', persona: '' };
 	}
+}
+
+/**
+ * Split a draft reply into its one-line description and persona. The keywords
+ * may arrive wrapped in Markdown bold (`**DESCRIPTION** - …`), which models
+ * emit unasked: a parser that only accepts bare keywords reads that as no
+ * description and keeps the whole reply — including the DESCRIPTION line — as
+ * the persona. Exported for tests.
+ */
+export function parseDraftReply(reply: string): { description: string; persona: string } {
+	const desc =
+		reply.match(/(?:\*\*)?DESCRIPTION(?:\*\*)?\s*[-:]\s*(.+)/i)?.[1]?.trim() ?? '';
+	const personaMatch = reply.match(/(?:\*\*)?PERSONA(?:\*\*)?\s*[-:]\s*([\s\S]+)/i);
+	const persona = (personaMatch?.[1] ?? (desc ? '' : reply)).trim().slice(0, BOT_PERSONA_MAX);
+	return { description: desc.slice(0, 200), persona };
 }
