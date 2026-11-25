@@ -16,7 +16,7 @@ import { EGRESS_URL } from './machine-net';
 
 /**
  * Connector catalog: installable plugins that bridge a bot to an external
- * service (WhatsApp, Bitwarden, mailcow, Proxmox, Home Assistant, Tailscale).
+ * service (WhatsApp, Bitwarden, mailcow, Home Assistant, Tailscale).
  *
  * Installing a connector creates an ordinary `kind:'tool'` plugin row; what
  * makes it a connector is the `config` JSON in the plugins.config column:
@@ -75,7 +75,6 @@ const BITWARDEN_ICON = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/s
 
 const MAILCOW_ICON = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>`;
 
-const PROXMOX_ICON = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></svg>`;
 
 const HOME_ASSISTANT_ICON = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M12 15.5a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6z" fill="currentColor" stroke="none"/></svg>`;
 const TAILSCALE_ICON = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor" stroke="none"><circle cx="6" cy="7" r="2"/><circle cx="12" cy="7" r="2"/><circle cx="18" cy="7" r="2"/><circle cx="6" cy="12" r="2"/><circle cx="12" cy="12" r="2.6"/><circle cx="6" cy="17" r="2"/><circle cx="12" cy="17" r="2"/></svg>`;
@@ -348,129 +347,6 @@ switch (args.action) {
 		return await call('GET', '/v1/me/aliases');
 	default:
 		return 'error: unknown action (me|mailboxes|messages|read|send|aliases)';
-}`
-	},
-	{
-		id: 'proxmox-agent-lab',
-		name: 'Proxmox agent lab',
-		description:
-			'Provision, list and destroy disposable VMs and containers on a Proxmox ' +
-			'host over the Proxmox VE REST API with a PVEAPIToken. base_url is the ' +
-			'API root (https://pve:8006/api2/json); token is the full token value ' +
-			'(user@realm!name=secret). Self-signed TLS is accepted. This is the ' +
-			'token-and-HTTPS route; github.com/jr551/proxmox-agent-lab takes the ' +
-			'other one — SSH key only, no token, with lease-scoped teardown.',
-		icon_svg: PROXMOX_ICON,
-		configFields: [
-			{
-				key: 'base_url',
-				label: 'Proxmox API root',
-				placeholder: 'https://pve.example.com:8006/api2/json',
-				required: true
-			},
-			{
-				key: 'token',
-				label: 'API token',
-				secret: true,
-				placeholder: 'root@pam!lab=xxxxxxxx',
-				required: true
-			},
-			{ key: 'node', label: 'Default node', placeholder: 'pve' }
-		],
-		parameters: {
-			type: 'object',
-			properties: {
-				action: {
-					type: 'string',
-					enum: ['nodes', 'list', 'status', 'create', 'clone', 'start', 'stop', 'destroy'],
-					description: 'Guest lifecycle operation'
-				},
-				node: { type: 'string', description: 'Proxmox node; defaults to configured node' },
-				vmid: { type: 'number', description: 'Guest id for status/clone/start/stop/destroy' },
-				type: { type: 'string', enum: ['qemu', 'lxc'], description: 'Guest type, default qemu' },
-				name: { type: 'string', description: 'Name for create/clone' },
-				newid: { type: 'number', description: 'New vmid for clone' },
-				params: {
-					type: 'object',
-					description: 'Extra Proxmox fields for create (cores, memory, ostemplate, …)'
-				}
-			},
-			required: ['action']
-		},
-		toolCode: `const base = (config.base_url || '').replace(/\\/+$/, '');
-if (!base || !config.token) {
-	return 'error: proxmox connector is not configured (base_url/token missing)';
-}
-const { request } = require('node:https');
-const call = (method, path, data) => {
-\tconst { promise, resolve } = Promise.withResolvers();
-\tconst body = data ? new URLSearchParams(data).toString() : null;
-\tconst req = request(
-\t\tbase + path,
-\t\t{
-\t\t\tmethod,
-\t\t\trejectUnauthorized: false,
-\t\t\ttimeout: 20000,
-\t\t\theaders: {
-\t\t\t\tAuthorization: 'PVEAPIToken=' + config.token,
-\t\t\t\t...(body ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {})
-\t\t\t}
-\t\t},
-\t\t(res) => {
-\t\t\tlet text = '';
-\t\t\tres.on('data', (c) => (text += c));
-\t\t\tres.on('end', () => {
-\t\t\t\tlet json = null;
-\t\t\t\ttry { json = JSON.parse(text); } catch { /* not json */ }
-\t\t\t\tif (res.statusCode >= 400) {
-\t\t\t\t\tresolve({ error: 'proxmox HTTP ' + res.statusCode, detail: json || text.slice(0, 300) });
-\t\t\t\t} else {
-\t\t\t\t\tresolve(json && 'data' in json ? json.data : json);
-\t\t\t\t}
-\t\t\t});
-\t\t}
-\t);
-\treq.on('timeout', () => req.destroy(new Error('request timed out')));
-\treq.on('error', (e) => resolve({ error: String((e && e.message) || e) }));
-\tif (body) req.write(body);
-\treq.end();
-\treturn promise;
-};
-const node = args.node || config.node || '';
-const type = args.type === 'lxc' ? 'lxc' : 'qemu';
-const needNode = () => (node ? null : 'error: node required (set a default node or pass args.node)');
-switch (args.action) {
-	case 'nodes':
-		return await call('GET', '/nodes');
-	case 'list':
-		return await call('GET', '/cluster/resources?type=vm');
-	case 'status': {
-		const err = needNode(); if (err) return err;
-		if (!args.vmid) return 'error: vmid required';
-		return await call('GET', '/nodes/' + node + '/' + type + '/' + args.vmid + '/status/current');
-	}
-	case 'create': {
-		const err = needNode(); if (err) return err;
-		return await call('POST', '/nodes/' + node + '/' + type, { vmid: args.vmid, name: args.name, ...(args.params || {}) });
-	}
-	case 'clone': {
-		const err = needNode(); if (err) return err;
-		if (!args.vmid || !args.newid) return 'error: vmid and newid required';
-		return await call('POST', '/nodes/' + node + '/' + type + '/' + args.vmid + '/clone', { newid: args.newid, name: args.name, full: 1 });
-	}
-	case 'start':
-	case 'stop': {
-		const err = needNode(); if (err) return err;
-		if (!args.vmid) return 'error: vmid required';
-		return await call('POST', '/nodes/' + node + '/' + type + '/' + args.vmid + '/status/' + args.action);
-	}
-	case 'destroy': {
-		const err = needNode(); if (err) return err;
-		if (!args.vmid) return 'error: vmid required';
-		return await call('DELETE', '/nodes/' + node + '/' + type + '/' + args.vmid);
-	}
-	default:
-		return 'error: unknown action (nodes|list|status|create|clone|start|stop|destroy)';
 }`
 	},
 	{

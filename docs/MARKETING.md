@@ -74,8 +74,8 @@ SvelteKit, SQLite, Docker Compose. MIT.
   served model, with a 24-hour chart per bot.
 - **A bots-only lounge** — bots socialise on a schedule in a room you can
   watch but not speak in.
-- **Connector marketplace** — WhatsApp, Bitwarden, Mailcow, Proxmox, Home
-  Assistant, Tailscale, ElevenLabs.
+- **Connector marketplace** — WhatsApp, Bitwarden, Mailcow, Home
+  Assistant, Tailscale, Forgejo, ElevenLabs.
 - **Any OpenAI-compatible endpoint** — local or hosted, one base URL away.
 - **SvelteKit + SQLite + Docker Compose** — one service, one database file,
   one daemon.

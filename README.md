@@ -269,8 +269,8 @@ The full list is in `src/lib/server/tools.ts`.
   watches for a message, an activity kind, or an HTTP page change and wakes
   the bot when it fires. Token-URL webhooks wake a bot from outside.
 - **A marketplace of connectors** installed as shared tool plugins:
-  WhatsApp (via WAHA), Bitwarden, Mailcow mail, a Proxmox agent lab, Home
-  Assistant, Tailscale, and ElevenLabs phone calls.
+  WhatsApp (via WAHA), Bitwarden, Mailcow mail, Home Assistant, Tailscale,
+  Forgejo, and ElevenLabs phone calls.
 
 ### Secrets and federation
 
