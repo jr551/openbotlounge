@@ -1301,6 +1301,13 @@ export async function runBotTurn(
 	const runtime = await loungeRuntime();
 	const { model: piModel } = registerLoungeProvider(runtime, { model }, turnSignal);
 	const piContext = toPiContext({ model, messages: history });
+	// Seeding replays each seeded message through message_end before the live
+	// call. Those replays must not be accounted (their zeroed usage otherwise
+	// falls back to estimating the whole history, once per seeded reply - a
+	// 1k-token call billed as ~18k) nor appended to history a second time.
+	// Count-based, because pi may clone messages on their way through.
+	let seededAssistantLeft = piContext.messages.filter((m) => m.role === 'assistant').length;
+	let seededUserLeft = piContext.messages.filter((m) => m.role === 'user').length;
 	const { session } = await createLoungeSession({
 		model: piModel,
 		modelRuntime: runtime,
@@ -1394,6 +1401,14 @@ export async function runBotTurn(
 	// The last assistant message the loop produced, for the error path.
 	let lastAssistant: AssistantMessage | undefined;
 	const unsubscribe = session.subscribe((event) => {
+		if (event.type === 'message_end' && event.message.role === 'assistant' && seededAssistantLeft > 0) {
+			seededAssistantLeft--;
+			return;
+		}
+		if (event.type === 'message_end' && event.message.role === 'user' && seededUserLeft > 0) {
+			seededUserLeft--;
+			return;
+		}
 		if (event.type === 'turn_start') {
 			stepStart = text.length;
 		} else if (event.type === 'message_update') {

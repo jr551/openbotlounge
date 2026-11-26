@@ -145,8 +145,12 @@ function emptyUsage(): Usage {
 function piUsageOf(result: StreamResult): Usage {
 	const u = result.usage;
 	if (!u) return emptyUsage();
+	// The conventions differ on `input`: the app's is the whole prompt (cache
+	// included), pi's is only the uncached share - piTokenUsage re-adds the
+	// cache on the way back, so handing pi the total would count cached
+	// tokens twice on every call.
 	return {
-		input: u.input,
+		input: Math.max(0, u.input - u.cacheRead - u.cacheWrite),
 		output: u.output,
 		cacheRead: u.cacheRead,
 		cacheWrite: u.cacheWrite,

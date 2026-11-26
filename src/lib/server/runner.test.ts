@@ -636,6 +636,40 @@ describe('runBotTurn', () => {
 		expect(getBot(bot.id)?.served_model).toBe('poolside/laguna-s-2.1:free');
 	});
 
+	it('counts a call once: seeded history is not re-billed, cache is not double-counted', async () => {
+		// The seeded transcript replays through message_end with zeroed usage;
+		// estimating the whole history for each seeded reply billed a 1k-token
+		// call as ~18k. The provider usage below is the whole bill, cache
+		// included - the pi round-trip must not add the cache a second time.
+		for (let i = 0; i < 6; i++) {
+			addMessage(conv.id, 'user', `question ${i} ` + 'word '.repeat(40));
+			addMessage(conv.id, 'assistant', `answer ${i} ` + 'word '.repeat(40), bot.id);
+		}
+		addMessage(conv.id, 'user', 'one more please');
+		vi.mocked(streamChat).mockImplementation(() =>
+			fakeStream(['ok'], {
+				text: 'ok',
+				toolCalls: [],
+				usage: {
+					input: 1000,
+					output: 10,
+					source: 'provider',
+					cacheRead: 800,
+					cacheWrite: 0,
+					cacheMiss: 200,
+					cacheReported: true
+				}
+			})
+		);
+		const seen: { input: number; output: number }[] = [];
+		const beforeIn = getBot(bot.id)?.input_tokens ?? 0;
+		await runBotTurn(conv, bot, { onUsage: (u) => seen.push(u) });
+		expect(seen).toHaveLength(1);
+		expect(seen[0].input).toBe(1000);
+		expect(seen[0].output).toBe(10);
+		expect((getBot(bot.id)?.input_tokens ?? 0) - beforeIn).toBe(1000);
+	});
+
 	it('falls back to the configured model when the provider names none', async () => {
 		bot = createBot({
 			name: 'Aliased',
