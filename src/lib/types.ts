@@ -331,6 +331,8 @@ export interface Task {
 	id: string;
 	conversation_id: string;
 	bot_id: string;
+	/** Routine that owns this turn, when the scheduler started it. */
+	routine_id?: string;
 	prompt: string;
 	/** What started the turn: 'chat', 'routine', 'wake', 'lounge', 'computer', 'webhook', 'inject', 'onboarding', 'fed', 'subagent' or 'police'. */
 	kind?: string;

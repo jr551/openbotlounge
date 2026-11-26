@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1 — 2026-11-26
+
+### Fixes
+
+- Routine runs now carry their routine ID, so a webhook or clock tick cannot start a duplicate while the same routine is still running after its prompt has been edited.
+
 ## 0.4.0 — 2026-11-26
 
 ### Features

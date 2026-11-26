@@ -202,11 +202,13 @@ export function startTask(
 		preamble?: string;
 		model?: string;
 		context?: string;
+		/** Stable owner used to deduplicate a scheduled routine while it runs. */
+		routineId?: string;
 		/** Run the turn with no tools - a rewrite, like a regenerate, must not re-fire side-effects. */
 		noTools?: boolean;
 	} = {}
 ): Task {
-	const task = createTask(conv.id, bot.id, prompt, undefined, opts.context);
+	const task = createTask(conv.id, bot.id, prompt, undefined, opts.context, opts.routineId);
 	// A task asked for while the process is shutting down never runs: it lands
 	// cancelled, like a jailed bot's refusal, rather than starting work the
 	// drain would have to abort a moment later.

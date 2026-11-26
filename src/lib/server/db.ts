@@ -267,6 +267,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   -- for. '' for turns the app started itself; the MCP bridge fills it so a
   -- pi-driven job carries its reason with it.
   context         TEXT NOT NULL DEFAULT '',
+  -- Stable owner for scheduled routine turns, so edits to their prompt do not
+  -- let a second fire overlap the same routine.
+  routine_id      TEXT NOT NULL DEFAULT '',
   emoji           TEXT NOT NULL DEFAULT '',
   status          TEXT NOT NULL DEFAULT 'running',
   preview         TEXT NOT NULL DEFAULT '',
@@ -729,6 +732,7 @@ const ADDED_COLUMNS: [table: string, column: string, ddl: string][] = [
 	// same way an activity does, so one file serves both views.
 	['messages', 'image', `ALTER TABLE messages ADD COLUMN image TEXT NOT NULL DEFAULT ''`],
 	['messages', 'kind', `ALTER TABLE messages ADD COLUMN kind TEXT NOT NULL DEFAULT ''`],
+	['tasks', 'routine_id', `ALTER TABLE tasks ADD COLUMN routine_id TEXT NOT NULL DEFAULT ''`],
 	['bots', 'hat', `ALTER TABLE bots ADD COLUMN hat TEXT NOT NULL DEFAULT ''`],
 	[
 		'bots',
@@ -2921,6 +2925,7 @@ export interface Task {
 	id: string;
 	conversation_id: string;
 	bot_id: string;
+	routine_id: string;
 	/** Prompt tokens this task's model calls have cost so far. */
 	tokens_in: number;
 	/** Reply tokens; see llm.ts for measured vs estimated. */
@@ -2993,13 +2998,15 @@ export function createTask(
 	botId: string,
 	prompt: string,
 	kind?: string,
-	context?: string
+	context?: string,
+	routineId = ''
 ): Task {
 	const task: Task = {
 		id: randomUUID(),
 		conversation_id: conversationId,
 		bot_id: botId,
 		prompt,
+		routine_id: routineId,
 		kind: kind || taskKindOf(prompt),
 		title: provisionalTitle(prompt),
 		context: context ?? '',
@@ -3019,9 +3026,16 @@ export function createTask(
 	};
 	task.emoji = KIND_EMOJI[task.kind] ?? '💬';
 	db.prepare(
-		'INSERT INTO tasks (id, conversation_id, bot_id, prompt, kind, title, emoji, status, context, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)'
-	).run(task.id, task.conversation_id, task.bot_id, task.prompt, task.kind, task.title, task.emoji, task.status, task.context, task.created_at);
+		'INSERT INTO tasks (id, conversation_id, bot_id, prompt, kind, title, emoji, status, context, routine_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)'
+	).run(task.id, task.conversation_id, task.bot_id, task.prompt, task.kind, task.title, task.emoji, task.status, task.context, task.routine_id, task.created_at);
 	return task;
+}
+
+/** The active task for one routine, independent of its editable prompt. */
+export function getRunningRoutineTask(routineId: string): Task | undefined {
+	return db
+		.prepare("SELECT * FROM tasks WHERE routine_id = ? AND status = 'running' ORDER BY created_at DESC LIMIT 1")
+		.get(routineId) as Task | undefined;
 }
 
 /** The model-written label, once the turn is done; '' keeps the provisional one. */

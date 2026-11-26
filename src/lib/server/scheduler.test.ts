@@ -16,22 +16,25 @@ import {
 	deleteWait,
 	deleteWake,
 	finishTask,
+	getRunningRoutineTask,
 	listActivities,
 	logActivity,
 	listBots,
 	listConversations,
 	listMessages,
 	listRoutines,
+	listTasks,
 	listWaits,
 	listWakes,
 	setWakeRunAt,
+	updateRoutine,
 	writeUpPoliceRecord,
 	type Bot,
 	type Conversation,
 	type Routine
 } from './db';
 import { bloatLabel, shortTokens } from '../bloat';
-import { resetSocialState, startScheduler, tick } from './scheduler';
+import { resetSocialState, runRoutineNow, startScheduler, tick } from './scheduler';
 import { runBotTurn, type BotTurnResult } from './runner';
 import { reapIdleMachines } from './machine';
 import { complete } from './llm';
@@ -199,6 +202,34 @@ afterEach(() => {
 });
 
 describe('routine firing', () => {
+	it('keeps an edited routine from overlapping its own active run', () => {
+		const bot = makeBot();
+		const conv = makeConv(bot);
+		const routine = makeRoutine(bot, conv, { prompt: 'check the old setting' });
+		vi.mocked(runBotTurn).mockImplementation(() => new Promise(() => {}));
+
+		const first = runRoutineNow(routine.id);
+		expect(first).toBeTruthy();
+		expect(getRunningRoutineTask(routine.id)?.id).toBe(first);
+
+		updateRoutine(routine.id, {
+			prompt: 'check the new setting',
+			interval_min: routine.interval_min,
+			cron: routine.cron,
+			next_run_at: routine.next_run_at,
+			enabled: routine.enabled
+		});
+
+		const retry = runRoutineNow(routine.id);
+		expect(retry).toBe(first);
+		expect(
+			listTasks({ conversationId: conv.id, botId: bot.id }).filter(
+				(task) => task.status === 'running' && task.routine_id === routine.id
+			)
+		).toHaveLength(1);
+		expect(routineMessages(conv.id)).toHaveLength(1);
+	});
+
 	it('fires once per interval and remembers the fire in next_run_at', async () => {
 		const bot = makeBot();
 		const conv = makeConv(bot);

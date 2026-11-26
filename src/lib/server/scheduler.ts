@@ -13,6 +13,7 @@ import {
 	getMessage,
 	getRatingReaction,
 	getRoutine,
+	getRunningRoutineTask,
 	listActivities,
 	listBots,
 	listVisibleBots,
@@ -214,9 +215,7 @@ export function runRoutineNow(routineId: string, note = ''): string | null {
 	// concurrent turn only duplicates the work (and the spend), so a fire
 	// that finds its routine already running rides that run instead.
 	const taskPrompt = `[Routine: ${routine.name}] ${routine.prompt}`;
-	const running = listTasks({ conversationId: conv.id, botId: bot.id }).find(
-		(t) => t.status === 'running' && t.prompt === taskPrompt
-	);
+	const running = getRunningRoutineTask(routine.id);
 	if (running) {
 		logActivity(bot.id, 'routine', `Routine "${routine.name}" already running; duplicate fire skipped`);
 		return running.id;
@@ -226,7 +225,7 @@ export function runRoutineNow(routineId: string, note = ''): string | null {
 	// wake on this bot's own routine. The turn runs as a task so the tray and
 	// the stats see its spend like any other turn's.
 	postFiring(conv.id, routineFiringText(routine, note));
-	return startTask(conv, bot, taskPrompt).id;
+	return startTask(conv, bot, taskPrompt, { routineId: routine.id }).id;
 }
 
 
