@@ -1,18 +1,30 @@
 # syntax=docker/dockerfile:1
 
-FROM node:24-slim AS build
+# Build once on the builder's native platform: the compiled app is plain JS,
+# so emulating the whole Vite build for arm64 bought nothing but hours - a
+# QEMU arm64 build hung for 6h in CI (2026-11-25, run 45658926987) while the
+# native amd64 build finished in ~100s.
+FROM --platform=$BUILDPLATFORM node:24-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY . .
-RUN npm run build && npm prune --omit=dev
+RUN npm run build
+
+# Production dependencies still resolve per target platform, so a future
+# native prod dependency lands correctly on arm64 - this stage only installs
+# the small prod tree, which emulation handles fine.
+FROM node:24-slim AS prod-deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
 
 FROM node:24-slim
 ENV NODE_ENV=production \
     DATA_DIR=/data \
     PORT=3000
 WORKDIR /app
-COPY --from=build /app/node_modules ./node_modules
+COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/build ./build
 # The bot machines' filtered way out to the internet; the app runs it as a
 # sidecar container joined to each machine's internal network.

@@ -23,6 +23,7 @@ jobs:
   verify:
     name: Typecheck, test and build
     runs-on: [self-hosted, supermicro-server]
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -47,6 +48,7 @@ jobs:
   secrets:
     name: Secret scan
     runs-on: [self-hosted, supermicro-server]
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -78,6 +80,9 @@ jobs:
     needs: [verify, secrets]
     if: github.event_name == 'push'
     runs-on: [self-hosted, supermicro-server]
+    # A wedged emulation build once burned the full 6h default; fail in
+    # minutes instead so the runner is back for the next push.
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
