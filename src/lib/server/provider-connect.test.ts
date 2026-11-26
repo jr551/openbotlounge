@@ -152,6 +152,7 @@ describe('a connection test against a working endpoint', () => {
 		// The key really was used; otherwise "it works" would prove nothing.
 		const init = fetchSpy.mock.calls[0][1] as RequestInit;
 		expect((init.headers as Record<string, string>).Authorization).toBe('Bearer sk-good-key-0001');
+		expect(JSON.parse(String(init.body))).toMatchObject({ max_tokens: 512, stream: false });
 	});
 });
 

@@ -392,6 +392,7 @@ forwarded" need a `docker-compose.override.yml`.
 | `LLM_BASE_URL` | `https://openrouter.ai/api/v1` | OpenAI-compatible base URL (OpenRouter by default; Ollama, LM Studio, vLLM, xAI, OpenAI, DeepSeek, Z.ai… also work). |
 | `LLM_API_KEY` | — | Bearer token; leave empty for a local server. |
 | `LLM_MODEL` | — | Model for the profile seeded on first boot, and the fallback model. **DeepSeek v4.1 Flash is the recommended driver model.** |
+| `PROVIDER_TEST_ALLOW_PRIVATE` | `false` | Let Settings' provider check reach a loopback or LAN model server. Enable only on a trusted self-hosted instance; the check runs from the app server and can reach private services. |
 | `APP_PASSWORD` | — | Shared password gate. Empty = no login. **Required if exposed.** |
 | `SESSION_SECRET` | random per boot | Cookie-signing secret. Unset, every restart logs everyone out. |
 | `POLICE_INTERVAL_HOURS` | `12` | Hours between police review rounds. |

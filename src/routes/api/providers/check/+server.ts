@@ -6,14 +6,32 @@ import { config } from '$lib/server/config';
 
 const CHECK_TIMEOUT_MS = 15_000;
 
+/** A 200 from a catch-all web server is not proof that a model answered. */
+function isCompletionResponse(raw: string): boolean {
+	try {
+		const data = JSON.parse(raw) as {
+			choices?: { message?: unknown; text?: unknown }[];
+		};
+		const choice = data?.choices?.[0];
+		if (!choice || typeof choice !== 'object') return false;
+		return (
+			(choice.message !== null && typeof choice.message === 'object') ||
+			typeof choice.text === 'string'
+		);
+	} catch {
+		return false;
+	}
+}
+
 /**
  * The cheapest real check that a base URL, key and model work together, run
  * when the provider form's model field changes - not on a button. A GET on
  * /models costs the provider nothing but a listing, so it is tried first: a
- * 200 there proves the endpoint answers and the key is accepted, and the model
- * name is checked against the list. An endpoint without a /models listing
- * (404) falls back to a one-token completion, the smallest billable probe an
- * OpenAI-compatible server offers.
+ * readable list proves the key was accepted and the model name is checked
+ * against it. A missing or unreadable listing falls back to a one-token
+ * completion, the smallest billable probe an OpenAI-compatible server offers.
+ * Only an OpenAI-style completion counts as success; an arbitrary 200 page
+ * does not.
  *
  * The same rules as the test route apply: the key comes from the typed field
  * and is never echoed, nothing the target says is repeated back, and private
@@ -74,35 +92,31 @@ export const POST: RequestHandler = async ({ request }) => {
 		} catch {
 			listed = null;
 		}
-		if (listed === null) {
+		if (listed !== null) {
+			if (listed.includes(model)) {
+				return json({ ok: true, message: `${model} is served by ${endpoint.host}.` });
+			}
 			return json({
-				ok: true,
-				message: `Reached ${endpoint.host}; the key was accepted but the model list was unreadable.`
+				ok: false,
+				message: `Reached ${endpoint.host}, but ${model} is not in its model list. Check the model name.`
 			});
 		}
-		if (listed.includes(model)) {
-			return json({ ok: true, message: `${model} is served by ${endpoint.host}.` });
-		}
-		return json({
-			ok: false,
-			message: `Reached ${endpoint.host}, but ${model} is not in its model list. Check the model name.`
-		});
-	}
-	if (res.status === 401 || res.status === 403) {
+		// Some compatible servers have no listing, and a proxy may answer
+		// /models with an HTML sign-in page. Let the completion probe decide.
+	} else if (res.status === 401 || res.status === 403) {
 		return json({
 			ok: false,
 			message: `The provider rejected the key (HTTP ${res.status}). Check the API key.`
 		});
-	}
-	if (res.status === 429) {
+	} else if (res.status === 429) {
 		return json({
 			ok: false,
 			message: 'The provider rate-limited the request (HTTP 429). Try again shortly.'
 		});
 	}
-	// No listing on this endpoint (404, or anything else): fall back to the
-	// smallest billable probe - one token of completion.
-	if (res.status !== 404) {
+	// No usable listing on this endpoint (404, or a response we could not read):
+	// fall back to the smallest billable probe - one token of completion.
+	if (res.status !== 404 && !res.ok) {
 		return json({
 			ok: false,
 			message: `The provider answered HTTP ${res.status}. Check the model name and the base URL.`
@@ -126,6 +140,13 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ ok: false, message: classifyNetworkError(err, endpoint.host, apiKey) });
 	}
 	if (comp.ok) {
+		const raw = (await comp.text().catch(() => '')).slice(0, 2000);
+		if (!isCompletionResponse(raw)) {
+			return json({
+				ok: false,
+				message: `Reached ${endpoint.host}, but the reply was not an OpenAI-style completion. Check that the base URL points at an OpenAI-compatible server.`
+			});
+		}
 		return json({ ok: true, message: `Reached ${endpoint.host}; ${model} answered a completion.` });
 	}
 	if (comp.status === 401 || comp.status === 403) {

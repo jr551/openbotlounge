@@ -4,6 +4,7 @@
 	import { setSoundEnabled, soundEnabled } from '$lib/sound';
 	import { modalKeydown } from '$lib/modal';
 	import { providerById, providerForBaseUrl, PROVIDERS } from '$lib/providers';
+	import { ProviderProbeTracker } from '$lib/provider-probe-state';
 	import { byteSize, shortAge, shortAhead } from '$lib/format';
 	import { shortTokens } from '$lib/bloat';
 	import Avatar from './Avatar.svelte';
@@ -730,7 +731,7 @@
 		newProvider = provider.id;
 		newBaseUrl = provider.baseUrl;
 		newModel = provider.models[0] ?? '';
-		checkedModel = '';
+		invalidateProviderCheck();
 		newKey = '';
 		testNote = { kind: 'idle', text: '' };
 		oauthNote = { kind: 'idle', text: '' };
@@ -739,7 +740,7 @@
 	function resetAddForm() {
 		newProvider = '';
 		newModel = '';
-		checkedModel = '';
+		invalidateProviderCheck();
 		newBaseUrl = '';
 		newKey = '';
 		deviceFlow = null;
@@ -748,10 +749,11 @@
 	}
 
 	/**
-	 * The model check runs on its own when the model field changes - there is
-	 * no button for it. The cheapest real probe lives in /api/providers/check:
-	 * a model listing first, a one-token completion only when the endpoint has
-	 * no listing. The answer is a toast, not a line under the form.
+	 * The provider check runs after the URL, model, or key field changes - there
+	 * is no button for it. Editing any field immediately clears the old result;
+	 * the check runs when editing ends. The cheapest real probe lives in
+	 * /api/providers/check: a model listing first, a one-token completion only
+	 * when the endpoint has no listing.
 	 */
 	let checkToast = $state<Note>({ kind: 'idle', text: '' });
 	let checkTimer: ReturnType<typeof setTimeout> | null = null;
@@ -761,13 +763,22 @@
 		if (kind !== 'busy') checkTimer = setTimeout(() => (checkToast = { kind: 'idle', text: '' }), 4000);
 	}
 
-	/** The model the last check ran against, so a reselect of the same value is not rechecked. */
-	let checkedModel = $state('');
+	/** Ignore a provider response if the form has changed since that check began. */
+	const providerProbe = new ProviderProbeTracker();
+	function invalidateProviderCheck() {
+		providerProbe.invalidate();
+		if (checkTimer) clearTimeout(checkTimer);
+		checkTimer = null;
+		checkToast = { kind: 'idle', text: '' };
+	}
+
 	async function checkModel() {
 		const model = newModel.trim();
 		const baseUrl = newBaseUrl.trim();
-		if (!model || !baseUrl || model === checkedModel) return;
-		checkedModel = model;
+		if (!model || !baseUrl) return;
+		const probeKey = JSON.stringify([baseUrl, model]);
+		const requestId = providerProbe.begin(probeKey);
+		if (requestId === null) return;
 		toastCheck('busy', `Checking ${model}…`);
 		const res = await fetch('/api/providers/check', {
 			method: 'POST',
@@ -775,10 +786,13 @@
 			body: JSON.stringify({ base_url: baseUrl, model, api_key: newKey.trim() })
 		}).catch(() => null);
 		const data = res?.ok ? await res.json().catch(() => null) : null;
+		if (!providerProbe.isCurrent(requestId)) return;
 		if (!data?.message) {
+			providerProbe.complete(requestId, false);
 			toastCheck('bad', 'The check could not run. Try again.');
 			return;
 		}
+		providerProbe.complete(requestId, data.ok === true);
 		toastCheck(data.ok ? 'ok' : 'bad', data.message);
 	}
 
@@ -1421,12 +1435,20 @@
 										<input
 											placeholder={chosen.basePlaceholder ?? 'https://api.example.com/v1'}
 											bind:value={newBaseUrl}
-											/>
+											oninput={invalidateProviderCheck}
+											onchange={checkModel}
+										/>
 										<span class="fieldhint">Include the /v1 path.</span>
 									</label>
 									<label>
 										Model
-										<input list="provider-models" placeholder="e.g. glm-5.3" bind:value={newModel} onchange={checkModel} />
+										<input
+											list="provider-models"
+											placeholder="e.g. glm-5.3"
+											bind:value={newModel}
+											oninput={invalidateProviderCheck}
+											onchange={checkModel}
+										/>
 										{#if chosen.models.length}
 											<span class="fieldhint">
 												Suggestions come from {chosen.name}'s own docs; any model id works.
@@ -1468,7 +1490,9 @@
 												? 'Usually not needed on a local server'
 												: 'Paste the key from the provider'}
 												bind:value={newKey}
-												/>
+												oninput={invalidateProviderCheck}
+												onchange={checkModel}
+											/>
 											<span class="fieldhint">Kept on the server; it is never sent back to this page.</span>
 										</label>
 										<button

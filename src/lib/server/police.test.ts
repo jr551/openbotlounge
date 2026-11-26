@@ -192,9 +192,6 @@ vi.mock('./llm', async (orig) => ({
 }));
 
 
-const made: Bot[] = [];
-const convs: Conversation[] = [];
-
 function makeBot(name: string): Bot {
 	const bot = createBot({
 		name,
@@ -204,13 +201,11 @@ function makeBot(name: string): Bot {
 		model: 'm1',
 		badge: ''
 	});
-	made.push(bot);
 	return bot;
 }
 
 function makeConv(bot: Bot): Conversation {
 	const conv = createConversation([bot.id], 'direct');
-	convs.push(conv);
 	return conv;
 }
 
@@ -279,8 +274,11 @@ beforeEach(() => {
  * (they outlive the bot they name), so those are cleared by hand.
  */
 afterEach(() => {
-	for (const conv of convs.splice(0)) deleteConversation(conv.id);
-	for (const bot of made.splice(0)) deleteBot(bot.id);
+	// A police round reads the whole fleet, including fixtures created directly
+	// rather than through makeBot. Remove every row so shuffled cases cannot
+	// compete over the one memory-pressure sanction or inherit an old offender.
+	for (const conv of listConversations()) deleteConversation(conv.id);
+	for (const bot of listBots()) deleteBot(bot.id);
 	db.prepare('DELETE FROM police_alerts').run();
 	db.prepare("DELETE FROM settings WHERE key = 'police_jail_mode'").run();
 });
@@ -335,7 +333,6 @@ describe('the police bot', () => {
 			badge: '',
 			hidden: 1
 		});
-		made.push(legacy);
 		const offender = makeBot('Oldcase');
 		writeUpPoliceRecord(offender.id, 90_000, 'spend what the job is worth', Date.now());
 
@@ -376,7 +373,6 @@ describe('the police bot', () => {
 			badge: '',
 			hidden: 1
 		});
-		made.push(stray);
 
 		expect(ensurePoliceBot().id).toBe(officer.id);
 		expect(listBots().filter((b) => b.name === POLICE_NAME).map((b) => b.id)).toEqual([

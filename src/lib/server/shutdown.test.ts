@@ -82,9 +82,7 @@ describe('stopAllTasks', () => {
 		const late = startTask(conv, bot, 'one more thing');
 		expect(getTask(late.id)?.status).toBe('cancelled');
 		expect(runBotTurn).toHaveBeenCalledTimes(1);
-	});
-
-	it('returns at once when nothing is running', async () => {
+		// Shutdown is idempotent: the second call has nothing left to drain.
 		await expect(stopAllTasks(5_000)).resolves.toBeUndefined();
 	});
 });

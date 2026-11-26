@@ -921,22 +921,47 @@ describe('complete() against a reasoning model that burns its budget', () => {
 
 		expect(text).toBe('APPROVED - it reads args.city');
 		expect(provider.requests).toHaveLength(2);
-		expect(provider.requests[0]).toMatchObject({ reasoning_effort: 'high' });
+		expect(provider.requests[0]).toMatchObject({ reasoning_effort: 'high', max_tokens: 200 });
+		expect(provider.requests[1]).toMatchObject({ max_tokens: 2048 });
 		expect((provider.requests[1] as Record<string, unknown>).reasoning_effort).toBeUndefined();
 	});
 
-	it('returns a truncated-but-nonempty answer rather than paying for a retry', async () => {
+	it('widens a tiny cap on retry even when no effort knob was requested', async () => {
 		provider.reset();
-		provider.queue([jsonResponse('a partial answer', 'length')]);
+		provider.queue([jsonResponse('', 'length')], [jsonResponse('ready', 'stop')]);
 
 		const text = await complete(
 			'test-model',
-			[{ role: 'user', content: 'review this' }],
-			{ effort: 'high', maxTokens: 200 }
+			[{ role: 'user', content: 'say ready' }],
+			{ maxTokens: 16 }
 		);
 
-		expect(text).toBe('a partial answer');
-		expect(provider.requests).toHaveLength(1);
+		expect(text).toBe('ready');
+		expect(provider.requests).toHaveLength(2);
+		expect(provider.requests[0]).toMatchObject({ max_tokens: 16 });
+		expect(provider.requests[1]).toMatchObject({ max_tokens: 1024 });
+		expect((provider.requests[0] as Record<string, unknown>).reasoning_effort).toBeUndefined();
+		expect((provider.requests[1] as Record<string, unknown>).reasoning_effort).toBeUndefined();
+	});
+
+	it('retries a truncated partial answer so JSON and sentences are not cut off', async () => {
+		provider.reset();
+		provider.queue(
+			[jsonResponse('{"date":"14 May",', 'length')],
+			[jsonResponse('{"date":"14 May","time":"09:30"}', 'stop')]
+		);
+
+		const text = await complete(
+			'test-model',
+			[{ role: 'user', content: 'extract the date and time as JSON' }],
+			{ effort: 'low', maxTokens: 128 }
+		);
+
+		expect(text).toBe('{"date":"14 May","time":"09:30"}');
+		expect(provider.requests).toHaveLength(2);
+		expect(provider.requests[0]).toMatchObject({ reasoning_effort: 'low', max_tokens: 128 });
+		expect(provider.requests[1]).toMatchObject({ max_tokens: 1024 });
+		expect((provider.requests[1] as Record<string, unknown>).reasoning_effort).toBeUndefined();
 	});
 });
 

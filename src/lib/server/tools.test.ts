@@ -871,6 +871,9 @@ describe('decline_secret', () => {
 		// handed over, and the reason pastes a value back - the exact move the
 		// reason field must survive.
 		setMemory(botId, 'secret:leaky', 'The user gave you a secret called "leaky".');
+		// The redactor works from values actually in the vault. Create the source
+		// here so this case does not depend on another shuffled test doing it.
+		createSecret(botId, 'leaky-source', VALUE);
 		const out = await executeTool(
 			'decline_secret',
 			JSON.stringify({ name: 'leaky', reason: `do not want ${VALUE} hanging around` }),
@@ -1424,7 +1427,7 @@ describe('the machine', () => {
 });
 
 describe('request_change', () => {
-	it('files the ask and drops a card in the police\'s own chat', async () => {
+	it('files one ask, drops a card, and refuses a second while it waits', async () => {
 		const out = await executeTool(
 			'request_change',
 			JSON.stringify({ need: 'install ffmpeg on the host', reason: 'clips need transcoding' }),
@@ -1440,12 +1443,9 @@ describe('request_change', () => {
 		const card = listMessages(dm.id).find((m) => m.kind === 'ask');
 		expect(card).toBeTruthy();
 		expect(JSON.parse(card!.content).change_request).toBe(asks[0].id);
-	});
 
-	it('refuses a second ask while the first is still waiting', async () => {
-		await executeTool('request_change', JSON.stringify({ need: 'first ask' }), ctx());
-		const out = await executeTool('request_change', JSON.stringify({ need: 'second ask' }), ctx());
-		expect(out).toContain('already have a request waiting');
+		const second = await executeTool('request_change', JSON.stringify({ need: 'second ask' }), ctx());
+		expect(second).toContain('already have a request waiting');
 		expect(pendingChangeRequests().filter((r) => r.bot_id === botId)).toHaveLength(1);
 	});
 });

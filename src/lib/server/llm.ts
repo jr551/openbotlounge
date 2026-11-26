@@ -827,23 +827,38 @@ export async function complete(
 		return text;
 	}
 	// A reasoning model can spend the whole token budget on hidden
-	// reasoning_content and answer with finish_reason 'length' and empty
-	// content - which callers read as a failed call. Retry that one case
-	// without the effort knob: a truncated-but-nonempty answer is real output
-	// and is returned as-is, but an empty one earned nothing.
-	for (const effort of [opts.effort, undefined]) {
+	// reasoning_content and answer with finish_reason 'length'. Empty content is
+	// a failed call; nonempty content can still be cut off mid-sentence or in the
+	// middle of JSON. Retry truncated answers without the effort knob and with
+	// enough room for reasoning plus a visible answer. A non-reasoner still stops
+	// as soon as its answer is done, so the larger ceiling costs nothing normally.
+	const requestedTokens = opts.maxTokens ?? 4096;
+	// High-effort police prompts can need substantially more hidden reasoning
+	// than a classifier or one-word probe. The larger budget is used only after
+	// the first attempt reports truncation.
+	const retryTokens = Math.max(requestedTokens, opts.effort === 'high' ? 2048 : 1024);
+	const attempts: { effort?: 'low' | 'high'; maxTokens: number }[] = [
+		{ effort: opts.effort, maxTokens: requestedTokens }
+	];
+	// With no effort knob and an already-sufficient cap there is nothing to
+	// change on a retry; do not pay for the identical request twice.
+	if (opts.effort !== undefined || retryTokens > requestedTokens) {
+		attempts.push({ effort: undefined, maxTokens: retryTokens });
+	}
+	for (let i = 0; i < attempts.length; i++) {
+		const attempt = attempts[i];
 		const res = await fetchWithRetry(`${endpoint.baseUrl}/chat/completions`, {
 			method: 'POST',
 			headers: headers(endpoint.apiKey),
 			// Reasoning models spend part of this on hidden reasoning_content before
-			// the visible answer; a small cap returns finish_reason 'length' with
-			// empty content, which callers read as a failed call.
+			// the visible answer, so callers that need a compact answer can still hit
+			// the cap before completing it.
 			body: JSON.stringify({
 				model,
 				messages,
 				stream: false,
-				max_tokens: opts.maxTokens ?? 4096,
-				...(effort ? { reasoning_effort: effort } : {})
+				max_tokens: attempt.maxTokens,
+				...(attempt.effort ? { reasoning_effort: attempt.effort } : {})
 			}),
 			signal: signalFor(opts.signal)
 		});
@@ -861,7 +876,7 @@ export async function complete(
 				: // complete() sends no tools, so there are none to count on the way out.
 					estimateUsage(messages, text, [], data.choices?.[0]?.message?.tool_calls ?? [])
 		);
-		if (text || data.choices?.[0]?.finish_reason !== 'length' || effort === undefined) {
+		if (data.choices?.[0]?.finish_reason !== 'length' || i === attempts.length - 1) {
 			return text;
 		}
 	}

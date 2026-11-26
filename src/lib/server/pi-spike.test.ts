@@ -17,7 +17,7 @@
 import { createServer, type Server } from 'node:http';
 import { zstdDecompressSync } from 'node:zlib';
 import type { AddressInfo } from 'node:net';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from '@earendil-works/pi-ai';
 import { addMessage, createBot, createConversation, listMemories, listMessages, setSetting } from './db';
 import {
@@ -119,6 +119,13 @@ function watchText(session: { subscribe: (l: (e: { type: string; message?: unkno
 	});
 	return texts;
 }
+
+afterEach(() => {
+	// The Codex case installs a real-shaped OAuth session. Tests are shuffled,
+	// so it must not decide which adapter the next provider case selects.
+	setSetting('provider_oauth', '');
+	setSetting('provider_api_key', '');
+});
 
 describe('pi spike - provider seam', () => {
 	it('streams one prompt through an arbitrary OpenAI-compatible baseUrl + key', async () => {

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.3 — 2026-11-26
+
+### Fixes
+
+- Reasoning models now retry truncated short answers with more room, including partial text and JSON. This keeps compact bots from returning blank replies or cut-off structured output.
+- Provider checks rerun when the URL, model, or key changes, and ignore responses from older checks. A malformed HTTP 200 no longer counts as a working provider.
+- Provider connection probes allow enough output budget for reasoning models.
+
+### Testing and docs
+
+- Isolate shared fixtures so the shuffled test suite remains order-independent.
+- Document `PROVIDER_TEST_ALLOW_PRIVATE` and its LAN-access implications for local model checks.
+
 ## 0.4.2 — 2026-11-26
 
 ### Security

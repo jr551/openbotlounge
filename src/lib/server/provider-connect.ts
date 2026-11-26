@@ -15,6 +15,13 @@ interface ProbeResult {
 /** How long one connection test may take before it is reported as a timeout. */
 const PROBE_TIMEOUT_MS = 15_000;
 
+/**
+ * Enough for a reasoning model to think and still emit the one-word answer.
+ * This is a ceiling, not a target: a non-reasoner stops after "ready" and spends
+ * the same handful of tokens it did with the old 16-token cap.
+ */
+const PROBE_MAX_TOKENS = 512;
+
 /** A key never reaches the client, not even inside an error it caused. */
 function redact(text: string, apiKey: string): string {
 	let out = redactCredentials(text);
@@ -217,7 +224,7 @@ export async function probeProvider(opts: {
 			body: JSON.stringify({
 				model: opts.model,
 				messages: [{ role: 'user', content: PROBE_PROMPT }],
-				max_tokens: 16,
+				max_tokens: PROBE_MAX_TOKENS,
 				stream: false
 			}),
 			signal: AbortSignal.timeout(PROBE_TIMEOUT_MS)
