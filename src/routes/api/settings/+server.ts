@@ -79,8 +79,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		config.model = model;
 		setSetting('default_model', model);
 	}
-	// The Lounge's bot-to-bot rounds run on this model (default 'free'); an
-	// empty value puts the shipped default back. Read fresh per social tick.
+	// The Lounge's bot-to-bot rounds can use a separate model. Blank and the
+	// legacy 'free' default fall back to the configured provider model.
 	const socialModel = strField(body, 'social_model', 120);
 	if (socialModel !== undefined) setSetting('social_model', socialModel.trim());
 	// The police round's own brain; empty falls back to the default model.

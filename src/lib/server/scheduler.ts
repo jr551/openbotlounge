@@ -52,6 +52,7 @@ import {
 import { checkWaits, dueWakes, nextCronRun } from './wake';
 import { sweepArchiveVotes } from './votes';
 import { config } from './config';
+import { socialChatModel } from './social-model';
 import { bloatLabel, shortTokens } from '../bloat';
 import type { Bot, Conversation, Routine, Task, WakeTask } from './db';
 
@@ -745,13 +746,14 @@ function loungeBrief(
  * room in order, as a task row like a chat turn's so the tray and the stats
  * count the spend, and the second answers the first rather than the brief
  * alone. Bot-to-bot chatter has no human reading it, so it runs on the
- * cheap/free router: social_model moves it off 'free', and the turn override
- * beats each bot's own model for these rounds only - human chats are
- * untouched. Returns each bot's reply message id, for callers that gate on
+ * social-chat model: a separately configured model wins, otherwise the
+ * provider's configured default is used. The turn override beats each bot's
+ * own model for these rounds only - human chats are untouched. Returns each
+ * bot's reply message id, for callers that gate on
  * who actually said something.
  */
 async function loungeTurns(conv: Conversation, bots: Bot[]): Promise<Map<string, string>> {
-	const socialModel = listSettings().social_model || 'free';
+	const socialModel = socialChatModel();
 	const replies = new Map<string, string>();
 	for (const bot of bots) {
 		try {

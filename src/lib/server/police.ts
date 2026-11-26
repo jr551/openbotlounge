@@ -81,6 +81,7 @@ import {
 import { runBotTurn } from './runner';
 import { hostMemory, killMachineChildren, limitMachineMemory, sleepMachine } from './machine';
 import { complete, type TokenUsage } from './llm';
+import { socialChatModel } from './social-model';
 import { startTask, waitForTask } from './tasks';
 import { chooseMostImportant } from './police-review';
 import { addCompactionReview } from './db';
@@ -2070,9 +2071,9 @@ export async function offerTreat(bot: Bot, conv: Conversation, reason: string): 
 	// downstairs until the offer resolves or lapses.
 	logActivity(bot.id, 'pub', IN_THE_PUB);
 	logActivity(officer.id, 'police', `Bought ${bot.name} a ${offer.tokens}-token round: ${reason}`);
-	// The bot answers the offer in the room it was made in, on the cheap
-	// social model like every lounge turn.
-	const socialModel = listSettings().social_model || 'free';
+	// The bot answers the offer in the room it was made in, on the same
+	// social-chat model as each Lounge round.
+	const socialModel = socialChatModel();
 	try {
 		await waitForTask(startTask(conv, bot, '[Lounge] a round at the Wetherspoons', { model: socialModel }).id);
 	} catch (e) {

@@ -1011,7 +1011,7 @@ export async function runBotTurn(
 		preamble?: string;
 		/** The task row this turn is running as, for tools that must not act on it. */
 		taskId?: string;
-		/** One-turn model override - the Lounge's cheap/free router - winning over bot.model. */
+		/** One-turn model override - e.g. the Lounge's selected social-chat model. */
 		model?: string;
 		/** Run without tools - a turn that only has to answer, like a write-up ack. */
 		noTools?: boolean;
@@ -1037,8 +1037,9 @@ export async function runBotTurn(
 		return { text: '', message: null, aborted: false, stoppedBy: 'jailed', silent: false };
 	}
 
-	// A per-turn override (the Lounge's free router) wins, then the per-bot
-	// model, otherwise the provider's configured model is what every call reaches.
+	// A per-turn override (such as the Lounge's selected social-chat model)
+	// wins, then the per-bot model, otherwise the provider's configured model
+	// is what every call reaches.
 	const model = opts.model || bot.model || defaultModel();
 	const delivered: { feedback: string[]; notes?: boolean } = { feedback: [] };
 	const history = await buildHistory(conv, bot, delivered);

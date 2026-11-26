@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.7 — 2026-11-26
+
+### Fixes
+
+- Lounge and pub turns now use the configured provider model when the separate social model is blank or retains the legacy `free` alias. DeepSeek had rejected `free` as an invalid model, leaving social rounds with only their opening message.
+
 ## 0.4.6 — 2026-11-26
 
 ### Fixes

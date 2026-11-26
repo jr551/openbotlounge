@@ -26,6 +26,7 @@ import {
 	listTasks,
 	listWaits,
 	listWakes,
+	setSetting,
 	setWakeRunAt,
 	updateRoutine,
 	writeUpPoliceRecord,
@@ -78,6 +79,7 @@ const convs: string[] = [];
 const plugins: string[] = [];
 const alerts: string[] = [];
 const orphans: { table: string; id: string }[] = [];
+const originalModel = config.model;
 let social = config.social;
 let socialInterval = config.socialIntervalMin;
 
@@ -168,12 +170,13 @@ beforeEach(() => {
 	vi.setSystemTime(BASE);
 	// Auto social chats would turn up in runBotTurn's call list without this.
 	config.social = false;
+	config.model = originalModel;
 	// The social clock and round count are process state; without this a test
 	// inherits whatever the last one left and its ticks and rounds depend on order.
 	resetSocialState();
 	// The police cooldown is durable state, so one test's inspection would
 	// otherwise silence the next test's.
-	db.prepare("DELETE FROM settings WHERE key = 'lounge_inspection_at'").run();
+	db.prepare("DELETE FROM settings WHERE key IN ('lounge_inspection_at', 'social_model')").run();
 	vi.mocked(runBotTurn).mockResolvedValue(turnResult);
 	vi.mocked(complete).mockResolvedValue('NO');
 	vi.mocked(reapIdleMachines).mockClear();
@@ -184,6 +187,7 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 	config.social = social;
 	config.socialIntervalMin = socialInterval;
+	config.model = originalModel;
 	for (const w of listWakes()) if (bots.includes(w.bot_id)) deleteWake(w.id);
 	for (const w of listWaits()) if (bots.includes(w.bot_id)) deleteWait(w.id);
 	for (const o of orphans) db.prepare(`DELETE FROM ${o.table} WHERE id = ?`).run(o.id);
@@ -687,6 +691,47 @@ describe('overlap', () => {
 });
 
 describe('social chats', () => {
+	it('uses the provider model when social_model is missing or left at the legacy free alias', async () => {
+		config.social = true;
+		config.socialIntervalMin = 60;
+		config.model = 'deepseek-flash';
+		makeBot('Alpha');
+		makeBot('Beta');
+
+		await tickAt(BASE);
+		const lounge = listConversations().find((c) => c.kind === 'group' && c.title === 'Lounge')!;
+		convs.push(lounge.id);
+		setSetting('social_model', 'free');
+		await tickAt(BASE + 61 * MINUTE);
+
+		const models = vi.mocked(runBotTurn).mock.calls
+			.filter(([conv]) => conv.id === lounge.id)
+			.map(([, , opts]) => opts?.model);
+		expect(models).toEqual([
+			'deepseek-flash',
+			'deepseek-flash',
+			'deepseek-flash',
+			'deepseek-flash'
+		]);
+	});
+
+	it('honors a separately configured social model', async () => {
+		config.social = true;
+		config.socialIntervalMin = 60;
+		config.model = 'deepseek-flash';
+		setSetting('social_model', 'small-bot-model');
+		makeBot('Alpha');
+		makeBot('Beta');
+
+		await tickAt(BASE);
+		const lounge = listConversations().find((c) => c.kind === 'group' && c.title === 'Lounge')!;
+		convs.push(lounge.id);
+		const models = vi.mocked(runBotTurn).mock.calls
+			.filter(([conv]) => conv.id === lounge.id)
+			.map(([, , opts]) => opts?.model);
+		expect(models).toEqual(['small-bot-model', 'small-bot-model']);
+	});
+
 	it('creates one Lounge room and chats in it once per social interval', async () => {
 		config.social = true;
 		config.socialIntervalMin = 60;
