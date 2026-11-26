@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.5 — 2026-11-26
+
+### Fixes
+
+- Token accounting no longer re-bills seeded history: pi replays seeded messages through `message_end` with zeroed usage, and the runner estimated the whole history for each one (a 1k-token call billed ~18k; a live one-line turn dropped 69,903 → 7,730 input tokens after the fix). Cached tokens are also no longer counted twice across the pi bridge. Per-bot token totals recorded before this fix remain overstated.
+
+### Performance
+
+- Every turn diets to the core 29 tools unless the ask names an extended need (previously only private rooms dieted): ~5.5k schema tokens saved on every provider call of an ordinary turn, pinned by a budget test. Ask-first entry points (`request_debug_access`, `request_thinking`) stay in the core set.
+
 ## 0.4.4 — 2026-11-26
 
 ### Fixes
