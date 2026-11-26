@@ -13,11 +13,13 @@ RUN npm run build
 
 # Production dependencies still resolve per target platform, so a future
 # native prod dependency lands correctly on arm64 - this stage only installs
-# the small prod tree, which emulation handles fine.
+# the small prod tree, which emulation handles fine. --ignore-scripts: the
+# package's own `prepare` runs svelte-kit sync, a dev tool this stage
+# deliberately does not install; the prod tree carries no install scripts.
 FROM node:24-slim AS prod-deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --no-audit --no-fund
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 
 FROM node:24-slim
 ENV NODE_ENV=production \
