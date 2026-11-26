@@ -820,6 +820,13 @@ function delegateCandidate(conv: Conversation, asker: Bot, message: string): Bot
 
 	const tokens = delegateTokens(message);
 	const lower = message.toLowerCase();
+	// A message naming two or more bots in the room - asker included - is
+	// addressing the room ("Maple, meet Pip: each of you…"), not singling one
+	// out. Handing it to whichever name scored had the asker delegate its own
+	// introduction to the other bot, who then answered in the asker's name.
+	const mentions = (name: string) =>
+		new RegExp(`\\b${name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(lower);
+	if (members.filter((b) => mentions(b.name)).length >= 2) return undefined;
 	const room = others.map((bot) => {
 		const context = delegateContext(bot);
 		return { bot, context, leads: [...tokens].filter((t) => context.includes(t)) };
@@ -901,6 +908,7 @@ async function tryDelegate(
 			onEvent: opts.onEvent,
 			preamble:
 				`${bot.name} asked you to take this request from the human: "${task}". ` +
+				`You are ${target.name}, not ${bot.name} - answer as yourself. ` +
 				`If it is not yours, say so in one line starting with DECLINE: and it goes back to ${bot.name}. ` +
 				`Otherwise just answer it - the human is watching this thread.`
 		});

@@ -1299,6 +1299,28 @@ describe('runBotTurn', () => {
 			expect(res.message?.bot_id).toBe(chef.id);
 			// The delegation brief reached the specialist's system prompt.
 		});
+		it('never delegates a message that names two bots in the room', async () => {
+			// "Maple, meet Pip: each of you…" names the asker too - it addresses
+			// the room, and handing it to the named other bot had the asker
+			// delegate its own introduction, answered in the asker's name.
+			const chef = makeSpecialist();
+			const room = roomWith(chef);
+			addMessage(
+				room.id,
+				'user',
+				`Hi both! ${bot.name}, meet ${chef.name} (new here). Each of you: one short line saying who you are.`
+			);
+			vi.mocked(streamChat).mockImplementation(() =>
+				fakeStream(['my own intro'], { text: 'my own intro', toolCalls: [] })
+			);
+
+			const res = await runBotTurn(room, bot);
+
+			expect(listMessages(room.id).some((m) => m.kind === 'delegate')).toBe(false);
+			expect(res.message?.bot_id).toBe(bot.id);
+			expect(vi.mocked(streamChat)).toHaveBeenCalledTimes(1);
+		});
+
 		it('logs the ask on the asker only once the delegate verifiably answered', async () => {
 			const chef = makeSpecialist();
 			const room = roomWith(chef);
