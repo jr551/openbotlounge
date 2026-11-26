@@ -540,12 +540,17 @@ export async function buildHistory(
 	return history;
 }
 
-/** The last thing a person said in this history, for the tool-diet check. */
-function lastUserText(history: ChatMessage[]): string {
-	for (let i = history.length - 1; i >= 0; i--) {
-		if (history[i].role === 'user') return textOf(history[i].content);
+/**
+ * The last few things a person said in this history, for the tool-diet check:
+ * the newest line alone loses the ask on a follow-up ("yes, do that"), so the
+ * extended toolbox would vanish mid-conversation.
+ */
+function recentUserText(history: ChatMessage[], count = 3): string {
+	const lines: string[] = [];
+	for (let i = history.length - 1; i >= 0 && lines.length < count; i--) {
+		if (history[i].role === 'user') lines.push(textOf(history[i].content));
 	}
-	return '';
+	return lines.join('\n');
 }
 
 export interface BotTurnResult {
@@ -1272,7 +1277,7 @@ export async function runBotTurn(
 	const turnTools = () =>
 		useTools
 			? [
-					...toolsForTurn(conv.private === 1, lastUserText(history)),
+					...toolsForTurn(recentUserText(history)),
 					...pluginToolsFor(bot.id),
 					...debugToolsFor(bot.id)
 				].filter(

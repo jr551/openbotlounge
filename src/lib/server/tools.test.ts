@@ -411,7 +411,7 @@ describe('search_web', () => {
 	});
 
 	it('is in the core set a private-room turn sees', () => {
-		expect(toolsForTurn(true, 'just chatting').map((t) => t.function.name)).toContain('search_web');
+		expect(toolsForTurn('just chatting').map((t) => t.function.name)).toContain('search_web');
 	});
 });
 
@@ -2250,14 +2250,28 @@ describe('toolsForTurn', () => {
 		const announcement =
 			'copy has called a vote to put eater in cold storage: it keeps eating the tokens ' +
 			'Vote with cast_vote - yes or no. The vote closes in 4 hours or when the room has settled it.';
-		const held = toolsForTurn(true, announcement).map((t) => t.function.name);
+		const held = toolsForTurn(announcement).map((t) => t.function.name);
 		expect(held).toContain('cast_vote');
 		expect(held).toContain('vote_archive');
 	});
 
-	it('still hands a public room the whole toolbox', () => {
-		const held = toolsForTurn(false, 'anything at all').map((t) => t.function.name);
-		expect(held).toContain('cast_vote');
+	it('diets an ordinary ask down to the core set, whatever the room', () => {
+		const held = toolsForTurn('anything at all').map((t) => t.function.name);
+		expect(held).toContain('use_computer');
+		expect(held).not.toContain('create_plugin');
+	});
+
+	it('keeps the dieted schema bulk under budget', () => {
+		// The whole point of the diet: ordinary turns must not re-acquire the
+		// extended schemas' ~5.5k tokens per provider call by drift.
+		const chars = JSON.stringify(toolsForTurn('anything at all')).length;
+		expect(chars).toBeLessThan(20_000);
+	});
+
+	it('restores the whole toolbox when the ask names an extended need', () => {
+		const held = toolsForTurn('please create a webhook for CI').map((t) => t.function.name);
+		expect(held).toContain('create_webhook');
+		expect(held).toContain('create_plugin');
 	});
 });
 

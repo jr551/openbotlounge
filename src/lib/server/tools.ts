@@ -1910,24 +1910,32 @@ const CORE_TOOL_NAMES = new Set([
 	'vote_archive',
 	'cast_vote',
 	'consult_police',
-	'spawn_agent'
+	'spawn_agent',
+	// The ask-first entry points are core too: a bot decides on its own that
+	// it needs debug access or a harder think, so no user wording exists for
+	// the diet to key on. What they unlock stays gated by the human's grant.
+	'request_debug_access',
+	'request_thinking'
 ]);
 
 export const CORE_TOOLS: ToolDef[] = BOT_TOOLS.filter((t) => CORE_TOOL_NAMES.has(t.function.name));
 export const EXTENDED_TOOLS: ToolDef[] = BOT_TOOLS.filter((t) => !CORE_TOOL_NAMES.has(t.function.name));
 
 /**
- * The words that make a private-room turn worth the full toolbox: a human
- * asking for a proposal, a secret, a webhook, a plugin, a look. Anything else
- * in a bots-only room gets the core set - the extended tools are for the
- * human's asks, and a private room has no human in it.
+ * The words that make a turn worth the full toolbox: an ask for a proposal, a
+ * secret, a webhook, a plugin, a new look. Everything else gets the core set
+ * in every room - the extended schemas cost ~5.5k tokens on *every* provider
+ * call of the turn (measured 2026-11-26: 38.5k schema chars total, 16.6k of
+ * them core), and ordinary chat, shell work and schedules never touch them.
+ * The runner passes the last few user lines, so a short follow-up ("yes, do
+ * that") still rides the ask that named the need.
  */
 const EXTENDED_HINT =
-	/\b(propos\w*|secret\w*|cookie\w*|webhook\w*|plugin\w*|peer\w*|federat\w*|block\w*|unblock\w*|deepwiki|wiki|debug\w*|avatar|stylesheet|css|theme\w*|hat|profile\w*|police|group chat|new bot|ssh)\b/i;
+	/\b(propos\w*|secret\w*|cookie\w*|credential\w*|password\w*|webhook\w*|plugin\w*|peer\w*|federat\w*|another lounge|block\w*|unblock\w*|deepwiki|wiki|debug\w*|avatar|stylesheet|css|theme\w*|hat|wear|style\w*|bubble\w*|persona\w*|appearance|profile\w*|staff board|police|group chat|group room|new room|new bot|create (?:a )?bot|ssh|nix|packages?|install\w*|reset\w*|wipe|rebuild\w*|think(?:ing)? harder|change request|improv\w*)\b/i;
 
-/** The tools a turn may see: everything, or the core set for a private room. */
-export function toolsForTurn(isPrivate: boolean, lastUserText: string): ToolDef[] {
-	if (!isPrivate || EXTENDED_HINT.test(lastUserText)) return BOT_TOOLS;
+/** The tools a turn may see: the core set, or everything when the ask names an extended need. */
+export function toolsForTurn(recentUserText: string): ToolDef[] {
+	if (EXTENDED_HINT.test(recentUserText)) return BOT_TOOLS;
 	return CORE_TOOLS;
 }
 
