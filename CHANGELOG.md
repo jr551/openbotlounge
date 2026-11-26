@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.4.0 — 2026-11-26
+
+### Features
+
+- **Voice (phase 1):** server-side text-to-speech through a Wyoming Piper server (`POST /api/tts` → WAV). The read-aloud button prefers it and falls back to the browser's speech synthesis; microphone input already existed.
+- **Forgejo connector** in the Marketplace: repos, branches, commits, issues read/write, pulls read/create/merge, CI runs and releases, with the token stored encrypted and a settings picker for the default repo.
+- **Routine webhooks:** each routine can have one inbound token URL that runs it now (created/revoked in the Screen routines tab). A fire that finds the routine already running rides that run instead of starting a second turn.
+
+### Fixes
+
+- Streaming replies render markdown live in the typing bubble, and the view follows the bubble as it grows (the follow effect fired once, stranding readers below the fold).
+- Interface sounds rebuilt as enveloped sines through a lowpass — no square-wave buzz — plus a Settings mute.
+- Tailscale connector needs only its auth key; the tailnet name is optional.
+- Machine first-boot toolset install retries 5× against the egress-proxy sidecar race; police draft parser tolerates `**KEYWORD**` replies; the personless-bot police DM is created when missing.
+
+### Operations
+
+- Image publish cross-builds on the native platform (a QEMU arm64 Vite build hung for 6h); production dependencies still resolve per target platform. CI jobs now time out in 10/20/45 minutes instead of the 6h default.
+- Proxmox agent lab connector removed from the Marketplace (SSH-key route lives on separately); installed copies keep working.
+- Dependency guardrails as a lockfile-reading test (`deps-audit.test.ts`, salvaged from the H4 PR).
+
 ## 0.3.0 — 2026-11-25
 
 ### Dependency upgrades
