@@ -110,6 +110,22 @@ describe('routine webhooks', () => {
 		expect(runBotTurn).toHaveBeenCalled();
 	});
 
+	it('does not double-fire while a run is already in flight', async () => {
+		// The turn never finishes, so the first fire is still running when the
+		// retry lands - a retried webhook delivery must not buy a second run.
+		vi.mocked(runBotTurn).mockImplementation(() => new Promise(() => {}));
+		const routine = makeRoutine();
+		const hook = createWebhook(botId, convId, 'Routine "Webhookable"', '', routine.id);
+		const before = contents().length;
+		await expect(fireWebhook(hook.token, 'first')).resolves.toBe(true);
+		await expect(fireWebhook(hook.token, 'first (retry)')).resolves.toBe(true);
+		expect(runBotTurn).toHaveBeenCalledTimes(1);
+		const firings = listMessages(convId)
+			.slice(before)
+			.filter((m) => m.content.startsWith('[Routine:'));
+		expect(firings).toHaveLength(1);
+	});
+
 	it('refuses to fire a switched-off routine', async () => {
 		const routine = makeRoutine();
 		setRoutineEnabled(routine.id, false);

@@ -209,12 +209,24 @@ export function runRoutineNow(routineId: string, note = ''): string | null {
 		rescheduleRoutine(routine.id, paused);
 		return null;
 	}
+	// One run at a time per routine: webhook senders retry deliveries, and a
+	// clock tick can land while a webhook-fired run is still going. A second
+	// concurrent turn only duplicates the work (and the spend), so a fire
+	// that finds its routine already running rides that run instead.
+	const taskPrompt = `[Routine: ${routine.name}] ${routine.prompt}`;
+	const running = listTasks({ conversationId: conv.id, botId: bot.id }).find(
+		(t) => t.status === 'running' && t.prompt === taskPrompt
+	);
+	if (running) {
+		logActivity(bot.id, 'routine', `Routine "${routine.name}" already running; duplicate fire skipped`);
+		return running.id;
+	}
 	logActivity(bot.id, 'routine', `Running routine "${routine.name}"`);
 	// Marked as the app speaking, so a watch for a person's words does not
 	// wake on this bot's own routine. The turn runs as a task so the tray and
 	// the stats see its spend like any other turn's.
 	postFiring(conv.id, routineFiringText(routine, note));
-	return startTask(conv, bot, `[Routine: ${routine.name}] ${routine.prompt}`).id;
+	return startTask(conv, bot, taskPrompt).id;
 }
 
 
