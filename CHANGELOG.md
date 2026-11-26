@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.6 — 2026-11-26
+
+### Fixes
+
+- A group message naming two bots ("Maple, meet Pip: each of you…") no longer counts as a delegation ask: name-mention made delegation decisive, so the asker handed its own introduction to the other bot, who answered in the asker's name and poisoned the thread's history. The delegation preamble also now names the target as itself.
+
 ## 0.4.5 — 2026-11-26
 
 ### Fixes
