@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.4 — 2026-11-26
+
+### Fixes
+
+- Retry empty provider completions even when the provider reports `stop`. This prevents the bot wizard from returning blank drafts when a reasoning model emits no visible text on its first attempt.
+
 ## 0.4.3 — 2026-11-26
 
 ### Fixes

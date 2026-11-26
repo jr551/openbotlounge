@@ -944,6 +944,26 @@ describe('complete() against a reasoning model that burns its budget', () => {
 		expect((provider.requests[1] as Record<string, unknown>).reasoning_effort).toBeUndefined();
 	});
 
+	it('retries an empty stop response from a reasoning model', async () => {
+		provider.reset();
+		provider.queue(
+			[jsonResponse('', 'stop')],
+			[jsonResponse('DESCRIPTION - Appointment helper\\nPERSONA - You are a concise appointment helper.', 'stop')]
+		);
+
+		const text = await complete(
+			'test-model',
+			[{ role: 'user', content: 'draft a compact appointment bot' }],
+			{ effort: 'high', maxTokens: 400 }
+		);
+
+		expect(text).toContain('DESCRIPTION - Appointment helper');
+		expect(provider.requests).toHaveLength(2);
+		expect(provider.requests[0]).toMatchObject({ reasoning_effort: 'high', max_tokens: 400 });
+		expect(provider.requests[1]).toMatchObject({ max_tokens: 2048 });
+		expect((provider.requests[1] as Record<string, unknown>).reasoning_effort).toBeUndefined();
+	});
+
 	it('retries a truncated partial answer so JSON and sentences are not cut off', async () => {
 		provider.reset();
 		provider.queue(

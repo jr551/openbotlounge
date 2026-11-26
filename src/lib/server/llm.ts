@@ -876,7 +876,8 @@ export async function complete(
 				: // complete() sends no tools, so there are none to count on the way out.
 					estimateUsage(messages, text, [], data.choices?.[0]?.message?.tool_calls ?? [])
 		);
-		if (data.choices?.[0]?.finish_reason !== 'length' || i === attempts.length - 1) {
+		const truncated = data.choices?.[0]?.finish_reason === 'length';
+		if ((!truncated && text) || i === attempts.length - 1) {
 			return text;
 		}
 	}

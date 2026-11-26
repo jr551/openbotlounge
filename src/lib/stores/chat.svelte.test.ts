@@ -22,6 +22,9 @@ const ROUTINE: Routine = {
 const BOT = { id: 'b1', name: 'Bot' } as Bot;
 
 afterEach(() => {
+	// The store is a module singleton; one test's optimistic send must not ride
+	// into another test's conversation when Vitest shuffles the cases.
+	chat.messages = [];
 	vi.unstubAllGlobals();
 	vi.useRealTimers();
 });
