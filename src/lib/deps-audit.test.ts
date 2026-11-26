@@ -32,13 +32,15 @@ describe('dependency uplift (H4)', () => {
 		return true;
 	};
 
-	it('pins undici, cookie and deepmerge overrides', () => {
+	it('pins dependency overrides', () => {
 		expect(pkg.overrides.undici).toBe('$undici');
 		expect(pkg.overrides.cookie).toBe('$cookie');
 		expect(pkg.overrides.deepmerge).toBe('$deepmerge');
+		expect(pkg.overrides.minimatch).toBe('$minimatch');
 		expect(pkg.devDependencies.undici).toBeTruthy();
 		expect(pkg.devDependencies.cookie).toBeTruthy();
 		expect(pkg.devDependencies.deepmerge).toBeTruthy();
+		expect(pkg.devDependencies.minimatch).toBe('11.0.1');
 	});
 
 	it('resolves undici and cookie at or above their fixed floors', () => {
@@ -49,5 +51,11 @@ describe('dependency uplift (H4)', () => {
 		const cookie = resolved('cookie');
 		expect(cookie.length).toBeGreaterThan(0);
 		for (const v of cookie) expect(atLeast(v, [0, 7, 0])).toBe(true);
+	});
+
+	it('resolves minimatch at or above the glob amplification fix', () => {
+		const minimatch = resolved('minimatch');
+		expect(minimatch.length).toBeGreaterThan(0);
+		for (const v of minimatch) expect(atLeast(v, [11, 0, 1])).toBe(true);
 	});
 });

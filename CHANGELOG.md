@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.2 — 2026-11-26
+
+### Security
+
+- Pin the Pi coding-agent dependency tree to `minimatch` 11.0.1, fixing the glob-part amplification advisory (GHSA-g3hv-75wg-m249). The Pi code uses the named `minimatch()` API retained by v11.
+
 ## 0.4.1 — 2026-11-26
 
 ### Fixes
