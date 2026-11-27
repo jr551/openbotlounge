@@ -100,6 +100,16 @@ function makeBot(name: string): Bot {
 }
 
 describe('buildHistory', () => {
+	it('reserves helper fan-out for work that materially needs it', async () => {
+		const bot = createBot({ name: 'Latch', persona: '', avatar: '', color: '', model: '', badge: '' });
+		const conv = createConversation([bot.id], 'direct');
+		const system = (await buildHistory(conv, bot))[0].content;
+
+		expect(system).toContain('Use spawn_agent only when the user asks you to delegate');
+		expect(system).toContain('Do not use it for arithmetic, simple transformations');
+		expect(system).toContain('Never inspect unrelated bot or /company files');
+	});
+
 	it('prefixes other bots’ messages with their name in group chats', async () => {
 		const a = createBot({ name: 'Alpha', persona: 'You are Alpha.', avatar: '', color: '', model: '', badge: '' });
 		const b = createBot({ name: 'Beta', persona: 'You are Beta.', avatar: '', color: '', model: '', badge: '' });

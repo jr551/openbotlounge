@@ -565,8 +565,11 @@ export const BOT_TOOLS: ToolDef[] = [
 			name: 'spawn_agent',
 			description:
 				'Spawn a short-lived helper agent to work on one focused task, and get ' +
-				'its report back as the tool result. Helpers are how you parallelise: ' +
-				'call spawn_agent several times in one reply and they run at once. ' +
+				'its report back as the tool result. Use helpers only when independent ' +
+				'research or file lookups materially help, or the user asks you to ' +
+				'delegate. Do not use them for arithmetic, simple transformations, ' +
+				'ordinary chat or a straightforward peer relay. Several focused helpers ' +
+				'can run at once when parallel work is genuinely useful. ' +
 				'A helper sees only the task and context you write here - none of this ' +
 				'conversation - and has read-only tools: it can look things up (your ' +
 				'files, memories, history, the staff board, DeepWiki) but cannot ' +
@@ -1910,7 +1913,6 @@ const CORE_TOOL_NAMES = new Set([
 	'vote_archive',
 	'cast_vote',
 	'consult_police',
-	'spawn_agent',
 	// The ask-first entry points are core too: a bot decides on its own that
 	// it needs debug access or a harder think, so no user wording exists for
 	// the diet to key on. What they unlock stays gated by the human's grant.
@@ -1934,7 +1936,8 @@ const MACHINE_REQUIRED_TOOL_NAMES = new Set([
 
 /**
  * The words that make a turn worth the full toolbox: an ask for a proposal, a
- * secret, a webhook, a plugin, a new look. Everything else gets the core set
+ * secret, a webhook, a plugin, a new look, or independent research. Everything
+ * else gets the core set
  * in every room - the extended schemas cost ~5.5k tokens on *every* provider
  * call of the turn (measured 2026-11-26: 38.5k schema chars total, 16.6k of
  * them core), and ordinary chat, shell work and schedules never touch them.
@@ -1942,7 +1945,7 @@ const MACHINE_REQUIRED_TOOL_NAMES = new Set([
  * that") still rides the ask that named the need.
  */
 const EXTENDED_HINT =
-	/\b(propos\w*|secret\w*|cookie\w*|credential\w*|password\w*|webhook\w*|plugin\w*|peer\w*|federat\w*|another lounge|block\w*|unblock\w*|deepwiki|wiki|debug\w*|avatar|stylesheet|css|theme\w*|hat|wear|style\w*|bubble\w*|persona\w*|appearance|profile\w*|staff board|police|group chat|group room|new room|new bot|create (?:a )?bot|ssh|nix|packages?|install\w*|reset\w*|wipe|rebuild\w*|think(?:ing)? harder|change request|improv\w*)\b/i;
+	/\b(propos\w*|secret\w*|cookie\w*|credential\w*|password\w*|webhook\w*|plugin\w*|peer\w*|federat\w*|another lounge|block\w*|unblock\w*|deepwiki|wiki|debug\w*|avatar|stylesheet|css|theme\w*|hat|wear|style\w*|bubble\w*|persona\w*|appearance|profile\w*|staff board|police|group chat|group room|new room|new bot|create (?:a )?bot|ssh|nix|packages?|install\w*|reset\w*|wipe|rebuild\w*|think(?:ing)? harder|change request|improv\w*|research\w*|compar\w*\s+(?:the\s+)?(?:\w+\s+)?(?:options?|approaches|products|sources)|parallel|independent|delegat\w*|helpers?)\b/i;
 
 /** The tools a turn may see: the core set, or everything when the ask names an extended need. */
 export function toolsForTurn(recentUserText: string, machineTier = 'full'): ToolDef[] {

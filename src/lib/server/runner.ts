@@ -400,17 +400,19 @@ export async function buildHistory(
 		'and do not claim an app is running unless you checked. To know what a page ' +
 		'says, read it with browse; if you have not looked, say what you ' +
 		'are doing instead of what it looks like.';
-	// Helpers are how a bot splits work: one spawn_agent call per independent
-	// piece runs them at once, and the reports come back as tool results.
+	// Keep helper fan-out for work that actually needs it. Arithmetic, simple
+	// transformations, ordinary chat and peer relays are self-contained; a
+	// helper on those turns can inspect unrelated files without helping answer.
 	system +=
-		'\n\nWhen a task has several independent parts - researching three things, ' +
-		'checking a list of files, comparing options - split it: call spawn_agent ' +
-		'once per part and the helpers run in parallel, each reporting back as a ' +
-		'tool result you then join into one answer. Give each helper a focused ' +
-		'brief: it sees only the task and context you write in the call, none of ' +
-		'this conversation, and it dies five minutes after it starts. For work ' +
-		'that should outlive this turn or rejoin later, wait_for and ' +
-		'schedule_task are the way - a wake brings the result back to you.';
+		'\n\nUse spawn_agent only when the user asks you to delegate or when independent ' +
+		'research or file lookups will materially improve the answer. Do not use it ' +
+		'for arithmetic, simple transformations, ordinary chat or a straightforward ' +
+		'peer relay. Never inspect unrelated bot or /company files; give each helper ' +
+		'the narrowest task and context it needs. A helper sees only the task and ' +
+		'context you write in the call, none of this conversation, and it dies five ' +
+		'minutes after it starts. For work that should outlive this turn or rejoin ' +
+		'later, wait_for and schedule_task are the way - a wake brings the result ' +
+		'back to you.';
 	// A bot that narrates its own actions reads as a machine reporting to
 	// itself, not a person doing the work: "I will now check the file" is the
 	// tell, "checking the file" is the work. The same goes for its own name -

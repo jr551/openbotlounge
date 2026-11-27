@@ -2281,6 +2281,28 @@ describe('toolsForTurn', () => {
 		const held = toolsForTurn('anything at all').map((t) => t.function.name);
 		expect(held).toContain('use_computer');
 		expect(held).not.toContain('create_plugin');
+		expect(held).not.toContain('spawn_agent');
+	});
+
+	it('keeps helpers off simple calculations and peer relays', () => {
+		for (const ask of [
+			'Compute 47 + 58, then send Maple the exact result in one message.',
+			'Calculate 47 + 58 and compare it with 100.'
+		]) {
+			const held = toolsForTurn(ask, 'none').map((t) => t.function.name);
+			expect(held).not.toContain('spawn_agent');
+			if (ask.includes('send Maple')) expect(held).toContain('send_message');
+		}
+	});
+
+	it('offers helpers for explicit independent research or delegation', () => {
+		for (const ask of [
+			'Research three approaches and compare the results.',
+			'Delegate these independent file lookups to helpers.',
+			'Compare the three options.'
+		]) {
+			expect(toolsForTurn(ask).map((t) => t.function.name)).toContain('spawn_agent');
+		}
 	});
 
 	it('withholds machine tools from chat-only bots, including extended requests', () => {
