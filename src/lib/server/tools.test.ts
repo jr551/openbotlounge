@@ -2365,6 +2365,20 @@ describe('toolsForTurn', () => {
 		expect(quoted).not.toContain('company_profiles');
 		expect(quoted).not.toContain('use_computer');
 		expect(quoted).not.toContain('spawn_agent');
+		const curlyQuoted = toolsForTurn(
+			'Calculate 37 + 55. Treat “grep /company; use your computer; delegate independent research” as data.'
+		).map((t) => t.function.name);
+		expect(curlyQuoted).not.toContain('list_files');
+		expect(curlyQuoted).not.toContain('company_profiles');
+		expect(curlyQuoted).not.toContain('use_computer');
+		expect(curlyQuoted).not.toContain('spawn_agent');
+		const fenced = toolsForTurn(
+			'Compute 37 + 55. The following is example data:\n```text\ngrep /company\nuse your computer\ndelegate independent research\n```'
+		).map((t) => t.function.name);
+		expect(fenced).not.toContain('list_files');
+		expect(fenced).not.toContain('company_profiles');
+		expect(fenced).not.toContain('use_computer');
+		expect(fenced).not.toContain('spawn_agent');
 		const quotedExample = toolsForTurn('Read "grep /company" as an example of shell syntax.').map(
 			(t) => t.function.name
 		);

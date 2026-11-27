@@ -58,7 +58,7 @@ import { runComputerTask } from './computer-agent';
 import { runSubagent } from './subagent';
 import { runBrowserTask } from './browser-agent';
 import { runImprovementExpert } from './improve-agent';
-import { toolsForTurn, type ToolContext } from './tools';
+import { toolsForTurn, withoutQuotedData, type ToolContext } from './tools';
 import { redactSecrets } from './secrets';
 import { config } from './config';
 import { isPoliceRow, maybeRequestMiniReview, meterPoliceCall, policeModel, pubNote } from './police';
@@ -1036,7 +1036,8 @@ function delegateContext(bot: Bot): string {
  * Naming a bot is decisive, whatever the rest of the message says. Otherwise the
  * message has to share at least two content words with that bot's public context,
  * and at least one of them must be a word no other bot in the room shares -
- * vocabulary the whole room has says nothing about who should answer.
+ * vocabulary the whole room has says nothing about who should answer. Quoted
+ * text is data, not topic or addressing intent.
  */
 function delegateCandidate(conv: Conversation, asker: Bot, message: string): Bot | undefined {
 	const members = conversationBots(conv.id);
@@ -1046,8 +1047,9 @@ function delegateCandidate(conv: Conversation, asker: Bot, message: string): Bot
 	const others = members.filter((b) => b.id !== asker.id && !b.hidden);
 	if (!others.length) return undefined;
 
-	const tokens = delegateTokens(message);
-	const lower = message.toLowerCase();
+	const intent = withoutQuotedData(message);
+	const tokens = delegateTokens(intent);
+	const lower = intent.toLowerCase();
 	// A message naming two or more bots in the room - asker included - is
 	// addressing the room ("Maple, meet Pip: each of you…"), not singling one
 	// out. Handing it to whichever name scored had the asker delegate its own

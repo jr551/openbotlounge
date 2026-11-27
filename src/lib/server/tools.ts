@@ -1986,14 +1986,28 @@ const HELPER_HINT =
 const DENIED_CAPABILITY =
 	/\b(?:don't\s+(?!forget\b)|do not\s+(?!forget\b)|never|without|avoid|skip|no need to)\b[^,.!?;\n]{0,80}/gi;
 
-const QUOTED_DATA = /"(?:\\.|[^"\\])*"|`[^`\n]*`|(?<!\w)'[^'\n]+'(?!\w)/g;
+const QUOTED_DATA =
+	/```[\s\S]*?```|~~~[\s\S]*?~~~|"(?:\\.|[^"\\])*"|`[^`\n]*`|“[^”\n]*”|‘[^’\n]*’|(?<!\w)'[^'\n]+'(?!\w)/g;
 
-function withoutQuotedData(text: string, keepAsFileTarget = false): string {
+export function withoutQuotedData(text: string, keepAsFileTarget = false): string {
 	return text.replace(QUOTED_DATA, (quoted, offset: number, source: string) => {
 		if (keepAsFileTarget) {
 			const before = source.slice(Math.max(0, offset - 80), offset);
 			const after = source.slice(offset + quoted.length, offset + quoted.length + 60);
+			const target = (quoted.startsWith('```')
+				? quoted.slice(3, -3)
+				: quoted.startsWith('~~~')
+					? quoted.slice(3, -3)
+					: quoted.slice(1, -1)
+			).trim();
+			const looksLikeFileTarget =
+				/^(?:\/|~\/|\.{1,2}\/)[^\r\n]*$/.test(target) ||
+				/^[\w.-]+(?:\/[\w .-]+)+$/.test(target) ||
+				/\.(?:md|txt|json|csv|html?|pdf|png|jpe?g|svg|xml|ya?ml|toml|log|sh|ts|js|py|go|rs)\b/i.test(
+					target
+				);
 			const isFileTarget =
+				looksLikeFileTarget &&
 				!/\b(?:quote|quoted|phrase|string|text|sentence|example|literal|data|command|prompt)\b/i.test(
 					before
 				) &&

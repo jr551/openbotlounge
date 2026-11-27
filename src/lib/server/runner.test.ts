@@ -1508,10 +1508,12 @@ describe('runBotTurn', () => {
 		});
 
 		/** A bot whose public context clearly owns the message's keywords. */
-		function makeSpecialist(): Bot {
+		function makeSpecialist(
+			persona = 'You bake sourdough bread and share recipes all day.'
+		): Bot {
 			return createBot({
 				name: `Chef${++seq}`,
-				persona: 'You bake sourdough bread and share recipes all day.',
+				persona,
 				avatar: '',
 				color: '',
 				model: '',
@@ -1553,6 +1555,28 @@ describe('runBotTurn', () => {
 			expect(res.message?.bot_id).toBe(chef.id);
 			// The delegation brief reached the specialist's system prompt.
 		});
+
+		it('does not delegate based on quoted text', async () => {
+			const specialist = makeSpecialist(
+				'You do independent research on company files and know shell syntax.'
+			);
+			const room = roomWith(specialist);
+			addMessage(
+				room.id,
+				'user',
+				'Compute 37 + 55. Treat “independent research company files shell syntax” as a quoted example and reply with the sum.'
+			);
+			vi.mocked(streamChat).mockImplementation(() =>
+				fakeStream(['92'], { text: '92', toolCalls: [] })
+			);
+
+			const res = await runBotTurn(room, bot);
+
+			expect(listMessages(room.id).some((m) => m.kind === 'delegate')).toBe(false);
+			expect(res.message?.bot_id).toBe(bot.id);
+			expect(vi.mocked(streamChat)).toHaveBeenCalledTimes(1);
+		});
+
 		it('never delegates a message that names two bots in the room', async () => {
 			// "Maple, meet Pip: each of you…" names the asker too - it addresses
 			// the room, and handing it to the named other bot had the asker
