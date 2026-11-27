@@ -118,6 +118,61 @@ describe('buildHistory', () => {
 		expect(histA).toContainEqual({ role: 'user', content: 'Beta: Beta here' });
 	});
 
+	it('scopes a named group task to the responder and keeps shared constraints', async () => {
+		const cedar = createBot({ name: 'Cedar', persona: 'You are Cedar.', avatar: '', color: '', model: '', badge: '' });
+		const lumen = createBot({ name: 'Lumen', persona: 'You are Lumen.', avatar: '', color: '', model: '', badge: '' });
+		const pico = createBot({ name: 'Pico', persona: 'You are Pico.', avatar: '', color: '', model: '', badge: '' });
+		const conv = createConversation([cedar.id, lumen.id, pico.id], 'group');
+		addMessage(
+			conv.id,
+			'user',
+			[
+				'Fictional project. No web or external actions.',
+				'- Cedar: invent a three-stop route.',
+				'- Lumen: write a riddle for the second stop.',
+				'- Pico: calculate the ticket balance.',
+				'For every assignment, output only your own result.'
+			].join('\n')
+		);
+
+		const history = await buildHistory(conv, lumen);
+		const focused = history.at(-1)!;
+
+		expect(focused.role).toBe('user');
+		expect(focused.content).toContain('You are Lumen.');
+		expect(focused.content).toContain('write a riddle for the second stop');
+		expect(focused.content).not.toContain('invent a three-stop route');
+		expect(focused.content).not.toContain('calculate the ticket balance');
+		expect(focused.content).toContain('For every assignment, output only your own result.');
+	});
+
+	it('leaves a normal group message untouched when it has no named assignment list', async () => {
+		const alpha = createBot({ name: 'Alpha', persona: 'You are Alpha.', avatar: '', color: '', model: '', badge: '' });
+		const beta = createBot({ name: 'Beta', persona: 'You are Beta.', avatar: '', color: '', model: '', badge: '' });
+		const conv = createConversation([alpha.id, beta.id], 'group');
+		addMessage(conv.id, 'user', 'Could you both invent a name for a cloud museum?');
+
+		const history = await buildHistory(conv, alpha);
+
+		expect(history.at(-1)).toEqual({
+			role: 'user',
+			content: 'Could you both invent a name for a cloud museum?'
+		});
+	});
+
+	it('puts the bot identity and named-assignment rule last in a group turn', async () => {
+		const bot = createBot({ name: 'Lumen', persona: 'You write riddles. You are Lumen.', avatar: '', color: '', model: '', badge: '' });
+		const other = createBot({ name: 'Cedar', persona: 'You curate exhibits. You are Cedar.', avatar: '', color: '', model: '', badge: '' });
+		const conv = createConversation([bot.id, other.id], 'group');
+
+		const system = (await buildHistory(conv, bot))[0].content;
+
+		expect(system).toContain('Your name is Lumen.');
+		expect(system).toContain('do only the one for Lumen');
+		expect(system).toContain("do not answer another bot's assignment or ask which bot you are");
+		expect(system).toContain('answer the shared request as Lumen');
+	});
+
 	it('tells a bots-only room, by name, what not to sound like', async () => {
 		const a = createBot({ name: 'Room', persona: '', avatar: '', color: '', model: '', badge: '' });
 		const room = createConversation([a.id], 'group');

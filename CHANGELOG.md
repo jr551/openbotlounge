@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.10 — 2026-11-27
+
+### Fixes
+
+- Bots in a group task with named assignments now receive only their own section plus the shared constraints, while the shared transcript remains unchanged. This keeps smaller models on their assigned role.
+
 ## 0.4.9 — 2026-11-27
 
 ### Fixes

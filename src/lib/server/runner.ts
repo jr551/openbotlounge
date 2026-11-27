@@ -492,11 +492,34 @@ export async function buildHistory(
 	if (conv.private && others.length) {
 		system += `\n\nIn this room at the moment: ${others.join(', ')}.`;
 	}
+	// A live group run with small models exposed a specific failure: even when
+	// the persona and the group framing named the bot, it asked which member it
+	// was or answered another bot's assignment. Put the identity and the rule
+	// for named assignments last, immediately before the shared transcript.
+	if (conv.kind === 'group' && others.length) {
+		system +=
+			`\n\nYour name is ${bot.name}. When the human gives named assignments, do only ` +
+			`the one for ${bot.name}; do not answer another bot's assignment or ask ` +
+			`which bot you are. When the message is for the whole group, answer the ` +
+			`shared request as ${bot.name}.`;
+	}
 	// Only the newest maxHistory rows are ever sent, so only those are read.
 	const rows = listContextMessages(conv.id, config.maxHistory);
+	const latestGroupAsk =
+		conv.kind === 'group'
+			? [...rows].reverse().find((m) => m.role === 'user' && !m.bot_id && !m.kind)
+			: undefined;
+	const focusedGroupAsk = latestGroupAsk
+		? namedGroupAssignment(latestGroupAsk.content, bot, members)
+		: null;
 
 	const history: ChatMessage[] = [{ role: 'system', content: system }];
 	for (const m of rows) {
+		// A structured group request is stored as the human wrote it, but each
+		// bot receives its own focused version after the rest of the transcript.
+		// Showing the full assignment list to small models made them pick a
+		// neighbour's task or ask which name belonged to them.
+		if (focusedGroupAsk && m.id === latestGroupAsk?.id) continue;
 		if (m.role === 'assistant') {
 			// A delegation card is the thread's record of a handoff, not something
 			// either bot said: its JSON is for the reader, and a model handed it
@@ -552,7 +575,77 @@ export async function buildHistory(
 			history.push({ role: 'user', content: sender ? `${sender}: ${m.content}` : m.content });
 		}
 	}
+	if (focusedGroupAsk) {
+		// The transcript above is unchanged and shared. This last model-only
+		// user turn is the current bot's assignment, with the shared constraints
+		// preserved and the other bots' tasks removed.
+		history.push({ role: 'user', content: `[App guidance for this group reply]\n${focusedGroupAsk}` });
+	}
 	return history;
+}
+
+/**
+ * Turn a clearly structured multi-bot request into one short, private
+ * assignment for this responder. Every bot previously received the whole list
+ * of named jobs; the smaller configured models sometimes asked which bot they
+ * were or did a neighbour's job despite the group system prompt naming them.
+ * The transcript remains shared and unchanged; this is appended only to the
+ * current bot's provider history.
+ */
+function namedGroupAssignment(prompt: string, bot: Bot, members: Bot[]): string | null {
+	const byName = new Map(members.map((member) => [member.name.trim().toLocaleLowerCase(), member]));
+	const assignments = new Map<string, string[]>();
+	const shared: string[] = [];
+	let current: Bot | undefined;
+	const assignedIds = new Set<string>();
+	const sharedInstruction =
+		/^(?:shared(?:\s+context)?\b|context\b|rules?\s*:|for\s+(?:all|each|every)\b|each\s+bot\b|everyone\b|all\s+(?:bots|of\s+you)\b|you\s+may\b|do\s+not\b|don't\b|output\b|answer\s+only\b|no\s+(?:web|research|helpers)\b)/i;
+
+	for (const line of prompt.split(/\r?\n/)) {
+		const colon = line.indexOf(':');
+		const label =
+			colon > 0
+				? line
+						.slice(0, colon)
+						.trim()
+						.replace(/^(?:[-*•]\s+|\d+[.)]\s+)/, '')
+						.toLocaleLowerCase()
+				: '';
+		const target = label ? byName.get(label) : undefined;
+		if (target) {
+			current = target;
+			assignedIds.add(target.id);
+			const parts = assignments.get(target.id) ?? [];
+			parts.push(line.slice(colon + 1).trim());
+			assignments.set(target.id, parts);
+			continue;
+		}
+		if (!current || sharedInstruction.test(line.trim())) {
+			shared.push(line);
+			if (sharedInstruction.test(line.trim())) current = undefined;
+			continue;
+		}
+		assignments.get(current.id)?.push(line);
+	}
+
+	// A single named reference is ordinary prose more often than an assignment
+	// board. Only scope the prompt when at least two room members have a section.
+	if (assignedIds.size < 2) return null;
+
+	const sharedText = shared.join('\n').trim();
+	const ownText = assignments.get(bot.id)?.join('\n').trim();
+	if (!ownText) {
+		return (
+			`You are ${bot.name}. This group message gives named assignments to other bots, ` +
+			`but none to you. Do not take another bot's assignment or ask which bot you are.` +
+			(sharedText ? `\n\nShared context and constraints:\n${sharedText}` : '')
+		);
+	}
+	return (
+		`You are ${bot.name}. Complete only this assignment addressed to you:\n${ownText}` +
+		`\n\nDo not answer another bot's assignment or ask which bot you are.` +
+		(sharedText ? `\n\nShared context and constraints:\n${sharedText}` : '')
+	);
 }
 
 /**
