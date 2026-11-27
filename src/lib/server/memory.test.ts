@@ -53,7 +53,8 @@ function fillMessages(conversationId: string, count: number) {
 }
 
 beforeEach(() => {
-	completeMock.mockClear();
+	completeMock.mockReset().mockResolvedValue('running summary');
+	vi.mocked(readPersonality).mockReset().mockResolvedValue(null);
 });
 
 describe('memoryBlock', () => {

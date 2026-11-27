@@ -672,7 +672,11 @@ const CLAIM_PATTERNS: { re: RegExp; tools: string[] }[] = [
 		tools: ['wait_for']
 	},
 	{
-		re: /\b(?:ran|run|executed|fixed|repaired|created|built|installed|deleted|removed|wiped|updated|changed)\b/i,
+		// A bare past-tense verb also describes fiction and passive state ("a
+		// room built for listening"). Only flag an action the bot claims it or
+		// the team performed; matching the verb anywhere made story prose trigger
+		// an unrelated no-tool warning on the next turn.
+		re: /\b(?:I|we)(?:'ve| have)?\s+(?:(?:just|already|successfully)\s+)?(?:ran|run|executed|fixed|repaired|created|built|installed|deleted|removed|wiped|updated|changed)\b/i,
 		tools: [
 			'use_computer',
 			// Delegated work counts too: browse hands the job to the browser
@@ -842,6 +846,11 @@ function delegateCandidate(conv: Conversation, asker: Bot, message: string): Bot
 	const mentions = (name: string) =>
 		new RegExp(`\\b${name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(lower);
 	if (members.filter((b) => mentions(b.name)).length >= 2) return undefined;
+	// A message that names only the current bot is a direct address, even when
+	// its topic happens to match a specialist's public context. Without this
+	// guard, "Tern, write the invitation" could be handed to Cedar because the
+	// invite vocabulary scored better against Cedar's event-planning context.
+	if (mentions(asker.name)) return undefined;
 	const room = others.map((bot) => {
 		const context = delegateContext(bot);
 		return { bot, context, leads: [...tokens].filter((t) => context.includes(t)) };

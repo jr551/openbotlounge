@@ -1365,6 +1365,21 @@ describe('runBotTurn', () => {
 			expect(vi.mocked(streamChat)).toHaveBeenCalledTimes(1);
 		});
 
+		it('keeps a request addressed to the current bot even when another bot matches the topic', async () => {
+			const chef = makeSpecialist();
+			const room = roomWith(chef);
+			addMessage(room.id, 'user', `${bot.name}, can you bake a sourdough bread recipe?`);
+			vi.mocked(streamChat).mockImplementation(() =>
+				fakeStream(['I can do that.'], { text: 'I can do that.', toolCalls: [] })
+			);
+
+			const res = await runBotTurn(room, bot);
+
+			expect(listMessages(room.id).some((m) => m.kind === 'delegate')).toBe(false);
+			expect(res.message?.bot_id).toBe(bot.id);
+			expect(vi.mocked(streamChat)).toHaveBeenCalledTimes(1);
+		});
+
 		it('logs the ask on the asker only once the delegate verifiably answered', async () => {
 			const chef = makeSpecialist();
 			const room = roomWith(chef);
@@ -1667,6 +1682,35 @@ describe('runBotTurn', () => {
 			vi.mocked(streamChat).mockImplementation(() =>
 				fakeStream(['the tool already has it logged'], {
 					text: 'the tool already has it logged',
+					toolCalls: []
+				})
+			);
+
+			await runBotTurn(conv, bot);
+
+			expect(listActivities(bot.id).some((a) => a.kind === 'claim')).toBe(true);
+		});
+
+		it('does not flag passive fictional descriptions that use an action verb', async () => {
+			vi.mocked(streamChat).mockImplementation(() =>
+				fakeStream(
+					['Echo Hall: a room built to make you listen to a whispered word before it is heard again.'],
+					{
+						text: 'Echo Hall: a room built to make you listen to a whispered word before it is heard again.',
+						toolCalls: []
+					}
+				)
+			);
+
+			await runBotTurn(conv, bot);
+
+			expect(listActivities(bot.id).some((a) => a.kind === 'claim')).toBe(false);
+		});
+
+		it('still flags an unbacked first-person action claim', async () => {
+			vi.mocked(streamChat).mockImplementation(() =>
+				fakeStream(["I've built the new page."], {
+					text: "I've built the new page.",
 					toolCalls: []
 				})
 			);

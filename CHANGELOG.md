@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.9 — 2026-11-27
+
+### Fixes
+
+- A group message that directly addresses one bot by name no longer gets handed to a different specialist based only on topic keywords.
+- The claims-vs-calls check no longer treats passive action verbs in fictional descriptions as unbacked tool claims; first-person action claims remain checked.
+
+### Testing
+
+- Reset the summarizer and personality mocks between memory tests so randomized test ordering cannot reuse stale provider responses.
+
 ## 0.4.8 — 2026-11-27
 
 ### Fixes
