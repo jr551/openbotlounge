@@ -146,6 +146,30 @@ describe('buildHistory', () => {
 		expect(focused.content).toContain('For every assignment, output only your own result.');
 	});
 
+	it('scopes inline named assignments and keeps the shared preamble', async () => {
+		const cedar = createBot({ name: 'Cedar', persona: 'You are Cedar.', avatar: '', color: '', model: '', badge: '' });
+		const lumen = createBot({ name: 'Lumen', persona: 'You are Lumen.', avatar: '', color: '', model: '', badge: '' });
+		const pico = createBot({ name: 'Pico', persona: 'You are Pico.', avatar: '', color: '', model: '', badge: '' });
+		const conv = createConversation([cedar.id, lumen.id, pico.id], 'group');
+		addMessage(
+			conv.id,
+			'user',
+			'Shared context: fictional project, no web or external actions. ' +
+			'Cedar: invent a three-stop route; Lumen: write a riddle for the second stop; ' +
+			'Pico: calculate the ticket balance.'
+		);
+
+		const history = await buildHistory(conv, lumen);
+		const focused = history.at(-1)!;
+
+		expect(focused.role).toBe('user');
+		expect(focused.content).toContain('You are Lumen.');
+		expect(focused.content).toContain('write a riddle for the second stop');
+		expect(focused.content).not.toContain('invent a three-stop route');
+		expect(focused.content).not.toContain('calculate the ticket balance');
+		expect(focused.content).toContain('fictional project, no web or external actions.');
+	});
+
 	it('leaves a normal group message untouched when it has no named assignment list', async () => {
 		const alpha = createBot({ name: 'Alpha', persona: 'You are Alpha.', avatar: '', color: '', model: '', badge: '' });
 		const beta = createBot({ name: 'Beta', persona: 'You are Beta.', avatar: '', color: '', model: '', badge: '' });

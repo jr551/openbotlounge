@@ -598,10 +598,40 @@ function namedGroupAssignment(prompt: string, bot: Bot, members: Bot[]): string 
 	const shared: string[] = [];
 	let current: Bot | undefined;
 	const assignedIds = new Set<string>();
+	const names = members
+		.map((member) => member.name.trim())
+		.filter(Boolean)
+		.sort((a, b) => b.length - a.length)
+		.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+	const inlineLabel = names.length
+		? new RegExp(`(^|[;,.]\\s*|\\s+)(?:[-*•]\\s*)?(${names.join('|')})\\s*:`, 'gi')
+		: null;
+	const lines = prompt.split(/\r?\n/).flatMap((line) => {
+		if (!inlineLabel) return [line];
+		const matches = [...line.matchAll(inlineLabel)];
+		// A single exact name is usually a mention, not a group assignment.
+		if (matches.length < 2) return [line];
+		const starts = matches.map((match) =>
+			(match.index ?? 0) + match[0].lastIndexOf(match[2] ?? '')
+		);
+		const expanded: string[] = [];
+		const prefix = line.slice(0, starts[0]).trim();
+		if (prefix) expanded.push(prefix);
+		for (let i = 0; i < matches.length; i++) {
+			const name = matches[i][2] ?? '';
+			const labelStart = starts[i];
+			const colon = line.indexOf(':', labelStart + name.length);
+			if (colon < 0) continue;
+			const end = starts[i + 1] ?? line.length;
+			const content = line.slice(colon + 1, end).trim().replace(/[,;]\s*$/, '');
+			expanded.push(`${name}: ${content}`);
+		}
+		return expanded.length ? expanded : [line];
+	});
 	const sharedInstruction =
 		/^(?:shared(?:\s+context)?\b|context\b|rules?\s*:|for\s+(?:all|each|every)\b|each\s+bot\b|everyone\b|all\s+(?:bots|of\s+you)\b|you\s+may\b|do\s+not\b|don't\b|output\b|answer\s+only\b|no\s+(?:web|research|helpers)\b)/i;
 
-	for (const line of prompt.split(/\r?\n/)) {
+	for (const line of lines) {
 		const colon = line.indexOf(':');
 		const label =
 			colon > 0
