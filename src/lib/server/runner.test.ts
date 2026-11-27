@@ -141,8 +141,9 @@ describe('buildHistory', () => {
 		expect(focused.role).toBe('user');
 		expect(focused.content).toContain('You are Lumen.');
 		expect(focused.content).toContain('write a riddle for the second stop');
-		expect(focused.content).not.toContain('invent a three-stop route');
-		expect(focused.content).not.toContain('calculate the ticket balance');
+		expect(focused.content).toContain('Other assignments (context only; do not perform them)');
+		expect(focused.content).toContain('Cedar: invent a three-stop route');
+		expect(focused.content).toContain('Pico: calculate the ticket balance');
 		expect(focused.content).toContain('For every assignment, output only your own result.');
 	});
 
@@ -165,9 +166,34 @@ describe('buildHistory', () => {
 		expect(focused.role).toBe('user');
 		expect(focused.content).toContain('You are Lumen.');
 		expect(focused.content).toContain('write a riddle for the second stop');
-		expect(focused.content).not.toContain('invent a three-stop route');
-		expect(focused.content).not.toContain('calculate the ticket balance');
+		expect(focused.content).toContain('Other assignments (context only; do not perform them)');
+		expect(focused.content).toContain('Cedar: invent a three-stop route');
+		expect(focused.content).toContain('Pico: calculate the ticket balance');
 		expect(focused.content).toContain('fictional project, no web or external actions.');
+	});
+
+	it('keeps source figures from peer assignments available to an arithmetic auditor', async () => {
+		const courier = createBot({ name: 'Courier', persona: '', avatar: '', color: '', model: '', badge: '' });
+		const gauge = createBot({ name: 'Gauge', persona: '', avatar: '', color: '', model: '', badge: '' });
+		const ledger = createBot({ name: 'Ledger', persona: '', avatar: '', color: '', model: '', badge: '' });
+		const conv = createConversation([courier.id, gauge.id, ledger.id], 'group');
+		addMessage(
+			conv.id,
+			'user',
+			[
+				'Courier: Starting with 26 packs, dispatch 8 to Pier and 6 to Clinic, then receive 5 replacements; calculate ending stock.',
+				'Gauge: Compare ending stock with the safety minimum of 18.',
+				'Ledger: Independently check the arithmetic and reconcile the numbers.'
+			].join('\n')
+		);
+
+		const focused = (await buildHistory(conv, ledger)).at(-1)!;
+
+		expect(focused.content).toContain('Independently check the arithmetic and reconcile the numbers');
+		expect(focused.content).toContain('Courier: Starting with 26 packs, dispatch 8 to Pier and 6 to Clinic');
+		expect(focused.content).toContain('receive 5 replacements');
+		expect(focused.content).toContain('Gauge: Compare ending stock with the safety minimum of 18');
+		expect(focused.content).toContain('Use any facts or values they contain if needed for your assignment');
 	});
 
 	it('leaves a normal group message untouched when it has no named assignment list', async () => {
@@ -197,6 +223,8 @@ describe('buildHistory', () => {
 		expect(system).toContain('answer the shared request as Lumen');
 		expect(system).toContain('preserve the exact values and check which condition triggers first');
 		expect(system).toContain('if claims conflict, surface the conflict');
+		expect(system).toContain('Use figures and claims present anywhere in the user\'s message as source data');
+		expect(system).toContain('do not say they are missing or search files for them when they are present');
 	});
 
 	it('tells a bots-only room, by name, what not to sound like', async () => {

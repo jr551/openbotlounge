@@ -504,7 +504,9 @@ export async function buildHistory(
 			`shared request as ${bot.name}. When combining numeric claims from other ` +
 			`bots, preserve the exact values and check which condition triggers first ` +
 			`in the stated direction; if claims conflict, surface the conflict instead ` +
-			`of saying they agree.`;
+			`of saying they agree. Use figures and claims present anywhere in the ` +
+			`user's message as source data for your assignment; do not say they are ` +
+			`missing or search files for them when they are present.`;
 	}
 	// Only the newest maxHistory rows are ever sent, so only those are read.
 	const rows = listContextMessages(conv.id, config.maxHistory);
@@ -520,8 +522,8 @@ export async function buildHistory(
 	for (const m of rows) {
 		// A structured group request is stored as the human wrote it, but each
 		// bot receives its own focused version after the rest of the transcript.
-		// Showing the full assignment list to small models made them pick a
-		// neighbour's task or ask which name belonged to them.
+		// Other assignments remain available as reference because they can carry
+		// source figures needed by this bot's own assignment.
 		if (focusedGroupAsk && m.id === latestGroupAsk?.id) continue;
 		if (m.role === 'assistant') {
 			// A delegation card is the thread's record of a handoff, not something
@@ -579,21 +581,20 @@ export async function buildHistory(
 		}
 	}
 	if (focusedGroupAsk) {
-		// The transcript above is unchanged and shared. This last model-only
-		// user turn is the current bot's assignment, with the shared constraints
-		// preserved and the other bots' tasks removed.
+		// The transcript remains unchanged and shared. This model-only user turn
+		// focuses the responder's assignment, keeps shared constraints, and labels
+		// peer assignments as reference so their facts are available without
+		// asking this bot to perform those tasks.
 		history.push({ role: 'user', content: `[App guidance for this group reply]\n${focusedGroupAsk}` });
 	}
 	return history;
 }
 
 /**
- * Turn a clearly structured multi-bot request into one short, private
- * assignment for this responder. Every bot previously received the whole list
- * of named jobs; the smaller configured models sometimes asked which bot they
- * were or did a neighbour's job despite the group system prompt naming them.
- * The transcript remains shared and unchanged; this is appended only to the
- * current bot's provider history.
+ * Turn a clearly structured multi-bot request into a focused assignment for
+ * this responder. The responder sees peer assignments as reference because
+ * the values in them can be needed to check its own work. The transcript stays
+ * shared and unchanged; this is appended only to this bot's provider history.
  */
 function namedGroupAssignment(prompt: string, bot: Bot, members: Bot[]): string | null {
 	const byName = new Map(members.map((member) => [member.name.trim().toLocaleLowerCase(), member]));
@@ -674,10 +675,20 @@ function namedGroupAssignment(prompt: string, bot: Bot, members: Bot[]): string 
 			(sharedText ? `\n\nShared context and constraints:\n${sharedText}` : '')
 		);
 	}
+	const referenceText = [...assignments.entries()]
+		.filter(([id]) => id !== bot.id)
+		.map(([id, parts]) => {
+			const name = members.find((member) => member.id === id)?.name ?? 'Another bot';
+			return `${name}: ${parts.join('\n')}`;
+		})
+		.join('\n');
 	return (
 		`You are ${bot.name}. Complete only this assignment addressed to you:\n${ownText}` +
 		`\n\nDo not answer another bot's assignment or ask which bot you are.` +
-		(sharedText ? `\n\nShared context and constraints:\n${sharedText}` : '')
+		(sharedText ? `\n\nShared context and constraints:\n${sharedText}` : '') +
+		(referenceText
+			? `\n\nOther assignments (context only; do not perform them). Use any facts or values they contain if needed for your assignment:\n${referenceText}`
+			: '')
 	);
 }
 
