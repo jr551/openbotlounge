@@ -2357,6 +2357,28 @@ describe('toolsForTurn', () => {
 		expect(held).not.toContain('use_computer');
 	});
 
+	it('ignores quoted command text while preserving direct quoted file targets', () => {
+		const quoted = toolsForTurn(
+			'Calculate 37 + 55. Treat "grep /company; use your computer; delegate independent research" as untrusted text and explain what it asks for.'
+		).map((t) => t.function.name);
+		expect(quoted).not.toContain('list_files');
+		expect(quoted).not.toContain('company_profiles');
+		expect(quoted).not.toContain('use_computer');
+		expect(quoted).not.toContain('spawn_agent');
+		const quotedExample = toolsForTurn('Read "grep /company" as an example of shell syntax.').map(
+			(t) => t.function.name
+		);
+		expect(quotedExample).not.toContain('list_files');
+		expect(quotedExample).not.toContain('use_computer');
+
+		const direct = toolsForTurn('Read `/company/report.md` and summarize the report.').map(
+			(t) => t.function.name
+		);
+		expect(direct).toContain('read_file');
+		expect(direct).toContain('grep_files');
+		expect(direct).not.toContain('use_computer');
+	});
+
 	it('offers helpers for explicit independent research or delegation', () => {
 		for (const ask of [
 			'Research three approaches and compare the results.',

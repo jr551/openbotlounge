@@ -1986,6 +1986,29 @@ const HELPER_HINT =
 const DENIED_CAPABILITY =
 	/\b(?:don't\s+(?!forget\b)|do not\s+(?!forget\b)|never|without|avoid|skip|no need to)\b[^,.!?;\n]{0,80}/gi;
 
+const QUOTED_DATA = /"(?:\\.|[^"\\])*"|`[^`\n]*`|(?<!\w)'[^'\n]+'(?!\w)/g;
+
+function withoutQuotedData(text: string, keepAsFileTarget = false): string {
+	return text.replace(QUOTED_DATA, (quoted, offset: number, source: string) => {
+		if (keepAsFileTarget) {
+			const before = source.slice(Math.max(0, offset - 80), offset);
+			const after = source.slice(offset + quoted.length, offset + quoted.length + 60);
+			const isFileTarget =
+				!/\b(?:quote|quoted|phrase|string|text|sentence|example|literal|data|command|prompt)\b/i.test(
+					before
+				) &&
+				!/^\s*(?:as\s+(?:a\s+|an\s+)?(?:quote|quoted text|phrase|string|text|sentence|example|literal|data|command|prompt))\b/i.test(
+					after
+				) &&
+				/\b(?:read|list|search|grep|find|open|inspect|review|look(?:\s+(?:at|in|into))?|show|check|what(?:'s| is)\s+in)\b[^.!?;]{0,60}$/i.test(
+					before
+				);
+			if (isFileTarget) return quoted.slice(1, -1);
+		}
+		return ' ';
+	});
+}
+
 /** Compose only the tool sets the ask needs, then remove machine tools chat-only bots cannot use. */
 export function toolsForTurn(
 	recentUserText: string,
@@ -1994,16 +2017,19 @@ export function toolsForTurn(
 ): ToolDef[] {
 	const names = new Set(CORE_TOOL_NAMES);
 	const allowedCapabilityText = currentUserText.replace(DENIED_CAPABILITY, '');
-	if (EXTENDED_HINT.test(recentUserText)) {
+	const recentIntentText = withoutQuotedData(recentUserText.replace(DENIED_CAPABILITY, ''));
+	const fileRequestText = withoutQuotedData(allowedCapabilityText, true);
+	const machineRequestText = withoutQuotedData(allowedCapabilityText);
+	if (EXTENDED_HINT.test(recentIntentText)) {
 		for (const tool of EXTENDED_TOOLS) names.add(tool.function.name);
 	}
-	if (FILE_HINT.test(allowedCapabilityText)) {
+	if (FILE_HINT.test(fileRequestText)) {
 		for (const tool of FILE_TOOLS) names.add(tool.function.name);
 	}
-	if (MACHINE_HINT.test(allowedCapabilityText)) {
+	if (MACHINE_HINT.test(machineRequestText)) {
 		for (const tool of MACHINE_TOOLS) names.add(tool.function.name);
 	}
-	if (HELPER_HINT.test(allowedCapabilityText)) {
+	if (HELPER_HINT.test(machineRequestText)) {
 		for (const tool of HELPER_TOOLS) names.add(tool.function.name);
 	}
 	const selected = BOT_TOOLS.filter((tool) => names.has(tool.function.name));
