@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.8 — 2026-11-27
+
+### Fixes
+
+- Chat-only bots no longer receive onboarding text that claims they have a computer, get machine lifecycle instructions, or see computer and machine setup tools. Their prompt now clearly states they cannot run commands; terminal-only bots are described accurately, and the computer tool refuses chat-only calls even if one is submitted directly.
+
 ## 0.4.7 — 2026-11-26
 
 ### Fixes

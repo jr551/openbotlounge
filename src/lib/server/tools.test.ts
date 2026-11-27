@@ -1360,6 +1360,28 @@ describe('files', () => {
 });
 
 describe('the machine', () => {
+	it('does not let a chat-only bot invoke its computer operator', async () => {
+		const chatOnly = createBot({
+			name: 'ChatOnlyToolBot',
+			persona: '',
+			avatar: '',
+			color: '',
+			model: '',
+			badge: '',
+			machine_tier: 'none'
+		});
+		const runComputer = vi.fn(async () => 'should not run');
+		const result = await executeTool(
+			'use_computer',
+			JSON.stringify({ task: 'create a file' }),
+			ctx({ senderBotId: chatOnly.id, senderBotName: chatOnly.name, runComputer })
+		);
+
+		expect(result).toBe('error: this bot is chat-only and has no computer');
+		expect(runComputer).not.toHaveBeenCalled();
+		deleteBot(chatOnly.id);
+	});
+
 	// A bot cannot know whether its machine is up before it asks, so each of the
 	// three states is an answer rather than a failure - and asking must never be
 	// the thing that breaks the turn.
@@ -2259,6 +2281,25 @@ describe('toolsForTurn', () => {
 		const held = toolsForTurn('anything at all').map((t) => t.function.name);
 		expect(held).toContain('use_computer');
 		expect(held).not.toContain('create_plugin');
+	});
+
+	it('withholds machine tools from chat-only bots, including extended requests', () => {
+		const held = toolsForTurn('reset my machine and request ssh access', 'none').map(
+			(t) => t.function.name
+		);
+		expect(held).toContain('remember');
+		expect(held).toContain('send_message');
+		for (const name of [
+			'use_computer',
+			'sleep_machine',
+			'wake_machine',
+			'machine_status',
+			'request_machine_reset',
+			'request_ssh_access',
+			'nix'
+		]) {
+			expect(held).not.toContain(name);
+		}
 	});
 
 	it('keeps the dieted schema bulk under budget', () => {

@@ -1921,6 +1921,17 @@ const CORE_TOOL_NAMES = new Set([
 export const CORE_TOOLS: ToolDef[] = BOT_TOOLS.filter((t) => CORE_TOOL_NAMES.has(t.function.name));
 export const EXTENDED_TOOLS: ToolDef[] = BOT_TOOLS.filter((t) => !CORE_TOOL_NAMES.has(t.function.name));
 
+/** Machine lifecycle and setup tools make no sense for a bot with no machine. */
+const MACHINE_REQUIRED_TOOL_NAMES = new Set([
+	'use_computer',
+	'sleep_machine',
+	'wake_machine',
+	'machine_status',
+	'request_machine_reset',
+	'request_ssh_access',
+	'nix'
+]);
+
 /**
  * The words that make a turn worth the full toolbox: an ask for a proposal, a
  * secret, a webhook, a plugin, a new look. Everything else gets the core set
@@ -1934,9 +1945,11 @@ const EXTENDED_HINT =
 	/\b(propos\w*|secret\w*|cookie\w*|credential\w*|password\w*|webhook\w*|plugin\w*|peer\w*|federat\w*|another lounge|block\w*|unblock\w*|deepwiki|wiki|debug\w*|avatar|stylesheet|css|theme\w*|hat|wear|style\w*|bubble\w*|persona\w*|appearance|profile\w*|staff board|police|group chat|group room|new room|new bot|create (?:a )?bot|ssh|nix|packages?|install\w*|reset\w*|wipe|rebuild\w*|think(?:ing)? harder|change request|improv\w*)\b/i;
 
 /** The tools a turn may see: the core set, or everything when the ask names an extended need. */
-export function toolsForTurn(recentUserText: string): ToolDef[] {
-	if (EXTENDED_HINT.test(recentUserText)) return BOT_TOOLS;
-	return CORE_TOOLS;
+export function toolsForTurn(recentUserText: string, machineTier = 'full'): ToolDef[] {
+	const selected = EXTENDED_HINT.test(recentUserText) ? BOT_TOOLS : CORE_TOOLS;
+	return machineTier === 'none'
+		? selected.filter((tool) => !MACHINE_REQUIRED_TOOL_NAMES.has(tool.function.name))
+		: selected;
 }
 
 /**
@@ -2553,6 +2566,9 @@ export async function executeTool(
 			case 'use_computer': {
 				const task = str(a.task);
 				if (!task) return 'error: describe the computer task';
+				if (getBot(ctx.senderBotId)?.machine_tier === 'none') {
+					return 'error: this bot is chat-only and has no computer';
+				}
 				if (!ctx.runComputer) return 'error: computer is unavailable here';
 				logEvent(ctx.conversationId, ctx.senderBotId, 'computer', `Using the computer: ${task.slice(0, 120)}`);
 				return await ctx.runComputer(task);

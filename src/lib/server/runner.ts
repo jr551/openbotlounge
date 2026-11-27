@@ -73,11 +73,17 @@ import type { TurnEvent } from './events';
  */
 function onboardingBlock(bot: Bot): string {
 	const others = listBots().filter((b) => b.id !== bot.id);
+	const machineIntro =
+		bot.machine_tier === 'none'
+			? 'You are chat-only: you do not have a personal computer, desktop or shell. '
+			: bot.machine_tier === 'terminal'
+				? 'You have a terminal-only computer of your own you can wake when a job needs it. '
+				: 'You have a computer of your own you can wake when a job needs it. ';
 	let block =
 		`You are ${bot.name}, and you have just woken up for the first time. ` +
 		`This is Openbotlounge - a messenger where the human chats with bots like you. ` +
-		`You have a computer of your own you can wake when a job needs it, and tools ` +
-		`for remembering things, scheduling work and talking to the other bots.`;
+		machineIntro +
+		`You have tools for remembering things, scheduling work and talking to the other bots.`;
 	if (others.length) {
 		block +=
 			`\n\nYou are not the only bot here. The others:\n` +
@@ -226,18 +232,25 @@ export async function buildHistory(
 				'"bless him, he thinks that\'s a plan".';
 		system = system ? `${system}\n\n${room}` : room;
 	}
-	// Running a bot costs real money and machine time, so say so plainly.
+	// '' predates the tier column and means full. Keep the general cost guidance
+	// separate from machine instructions so a chat-only bot never hears that it
+	// has a computer to put away.
+	const tier = bot.machine_tier === 'terminal' || bot.machine_tier === 'none' ? bot.machine_tier : 'full';
 	system +=
 		'\n\nBe economical. Everything you do costs the person whose machine this runs ' +
 		'on: model calls, background tasks, scheduled runs and sandbox containers. ' +
 		'Answer in as few words as the question deserves, do not repeat work you have ' +
-		'already done, do not start tasks or schedules nobody asked for, and stop using ' +
-		'your computer once the job is finished: sleep_machine puts it down until you ' +
-		'need it again, and wake_machine brings it back in seconds.';
+		'already done, and do not start tasks or schedules nobody asked for.';
+	if (tier === 'none') {
+		system += ' You have no computer to use; never claim that you have one.';
+	} else {
+		system +=
+			' Stop using your computer once the job is finished: sleep_machine puts it ' +
+			'down until you need it again, and wake_machine brings it back in seconds.';
+	}
 	// What this bot's own computer can do, said plainly every turn so it never
 	// has to guess or borrow another tier's refusal. Tier reads straight off
 	// the bot row, with '' as full for every bot made before the column was.
-	const tier = bot.machine_tier === 'terminal' || bot.machine_tier === 'none' ? bot.machine_tier : 'full';
 	if (tier === 'terminal') {
 		system +=
 			'\n\nYour machine: terminal tier - a real Alpine container; shell_exec works, ' +
@@ -259,7 +272,9 @@ export async function buildHistory(
 			'ssh at it.';
 	} else {
 		system +=
-			'\n\nYou are chat-only: no machine, no shell - say so plainly when asked.';
+			'\n\nYou are chat-only: you do not have a personal computer, shell or desktop, and cannot run commands. ' +
+			'If asked whether you have a computer, shell or desktop, answer that you do not. ' +
+			'Never claim that you ran a command or used a computer.';
 	}
 	if (tier !== 'none') {
 		system +=
@@ -1286,7 +1301,7 @@ export async function runBotTurn(
 	const turnTools = () =>
 		useTools
 			? [
-					...toolsForTurn(recentUserText(history)),
+					...toolsForTurn(recentUserText(history), bot.machine_tier),
 					...pluginToolsFor(bot.id),
 					...debugToolsFor(bot.id)
 				].filter(

@@ -290,6 +290,8 @@ describe('buildHistory', () => {
 		// whatever the household has shared.
 		const sys = (await buildHistory(conv, bot))[0].content;
 		expect(sys).toContain('just woken up for the first time');
+		expect(sys).toContain('You have a computer of your own you can wake when a job needs it.');
+		expect(sys).toContain('sleep_machine puts it down until you need it again');
 		expect(sys).toContain('Vet');
 		expect(sys).toContain('the human likes short answers');
 		expect(sys).toContain('what they would like you to be and to do');
@@ -304,6 +306,48 @@ describe('buildHistory', () => {
 		expect((await buildHistory(conv, getBot(bot.id)!))[0].content).not.toContain(
 			'just woken up for the first time'
 		);
+	});
+
+	it('does not tell a chat-only bot it has a computer during onboarding', async () => {
+		const bot = createBot({
+			name: 'ChatOnly',
+			persona: '',
+			avatar: '',
+			color: '',
+			model: '',
+			badge: '',
+			machine_tier: 'none'
+		});
+		const conv = createConversation([bot.id], 'direct');
+
+		const sys = (await buildHistory(conv, bot))[0].content;
+
+		expect(sys).toContain('You are chat-only: you do not have a personal computer, desktop or shell.');
+		expect(sys).not.toContain('You have a computer of your own');
+		expect(sys).toContain(
+			'If asked whether you have a computer, shell or desktop, answer that you do not.'
+		);
+		expect(sys).toContain('Never claim that you ran a command or used a computer.');
+		expect(sys).not.toContain('sleep_machine');
+		expect(sys).not.toContain('wake_machine');
+	});
+
+	it('describes a terminal-only computer accurately during onboarding', async () => {
+		const bot = createBot({
+			name: 'TerminalOnly',
+			persona: '',
+			avatar: '',
+			color: '',
+			model: '',
+			badge: '',
+			machine_tier: 'terminal'
+		});
+		const conv = createConversation([bot.id], 'direct');
+
+		const sys = (await buildHistory(conv, bot))[0].content;
+
+		expect(sys).toContain('You have a terminal-only computer of your own you can wake when a job needs it.');
+		expect(sys).not.toContain('You have a computer of your own');
 	});
 
 	it("names the bot's own plugins, and never inlines their code", async () => {
