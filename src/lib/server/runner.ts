@@ -14,6 +14,7 @@ import {
 	listBotNotes,
 	listConversations,
 	listContextMessages,
+	listChatTasksForHistory,
 	lastBotMessage,
 	listBots,
 	listNotes,
@@ -433,6 +434,11 @@ export async function buildHistory(
 		'fits the job - not the first one that comes to mind. If none clearly ' +
 		'fits or you are unsure which to use, ask the police for guidance ' +
 		'rather than guessing or narrating what you would do.';
+	system +=
+		'\n\nTreat earlier user messages as conversation context, not fresh requests. ' +
+		'Only perform tool actions asked for in the latest user turn. If an earlier ' +
+		'message is marked cancelled or failed, do not repeat its tool actions unless ' +
+		'the latest user message explicitly asks you to retry them.';
 	if (conv.kind === 'group' && others.length) {
 		system += `\n\nYou are ${bot.name} in a group chat with the human and: ${others.join(', ')}. ` +
 			`Messages from other bots are prefixed with their name. Reply as ${bot.name}; ` +
@@ -512,6 +518,27 @@ export async function buildHistory(
 	}
 	// Only the newest maxHistory rows are ever sent, so only those are read.
 	const rows = listContextMessages(conv.id, config.maxHistory);
+	// A stopped user turn remains in the transcript for context, but leaving it
+	// unmarked made some models replay its tool calls when a later turn started.
+	// Match this bot's chat tasks to human messages in order; timestamps bind a
+	// repeated identical ask to its own task instead of borrowing a newer status.
+	const chatTasks = listChatTasksForHistory(conv.id, bot.id);
+	const matchedTaskIds = new Set<string>();
+	const stoppedUserTurns = new Map<string, 'cancelled' | 'error'>();
+	for (const message of rows) {
+		if (message.role !== 'user' || message.bot_id || message.kind === 'event') continue;
+		const task = chatTasks.find(
+			(candidate) =>
+				!matchedTaskIds.has(candidate.id) &&
+				candidate.prompt === message.content &&
+				candidate.created_at >= message.created_at
+		);
+		if (!task) continue;
+		matchedTaskIds.add(task.id);
+		if (task.status === 'cancelled' || task.status === 'error') {
+			stoppedUserTurns.set(message.id, task.status);
+		}
+	}
 	const latestGroupAsk =
 		conv.kind === 'group'
 			? [...rows].reverse().find((m) => m.role === 'user' && !m.bot_id && !m.kind)
@@ -579,7 +606,14 @@ export async function buildHistory(
 			// the human: a relay carried as a plain user turn is what had a bot
 			// answering another bot when the human typed "poo".
 			const sender = m.bot_id ? (members.find((b) => b.id === m.bot_id)?.name ?? getBot(m.bot_id)?.name ?? 'a bot') : '';
-			history.push({ role: 'user', content: sender ? `${sender}: ${m.content}` : m.content });
+			const content = sender ? `${sender}: ${m.content}` : m.content;
+			const stopped = stoppedUserTurns.get(m.id);
+			history.push({
+				role: 'user',
+				content: stopped
+					? `[Earlier request; its bot turn was ${stopped}. Treat it as history and do not repeat its tool actions unless the newest user message explicitly asks you to retry.]\n${content}`
+					: content
+			});
 		}
 	}
 	if (focusedGroupAsk) {

@@ -3081,6 +3081,25 @@ export function listTasks(
 }
 
 /**
+ * Recent human chat turns for one bot, in transcript order. The ordinary task
+ * tray puts running work first, which cannot pair repeated prompts with their
+ * source messages; this order keeps rowid as the timestamp-collision tiebreak.
+ */
+export function listChatTasksForHistory(conversationId: string, botId: string): Task[] {
+	return db
+		.prepare(
+			`SELECT * FROM tasks
+			 WHERE rowid IN (
+			   SELECT rowid FROM tasks
+			   WHERE conversation_id = ? AND bot_id = ? AND kind = 'chat'
+			   ORDER BY created_at DESC, rowid DESC LIMIT 500
+			 )
+			 ORDER BY created_at ASC, rowid ASC`
+		)
+		.all(conversationId, botId) as unknown as Task[];
+}
+
+/**
  * The model each of a bot's tasks was served by, keyed by task id. The task
  * row carries no model of its own; the reply it wrote does (messages.model is
  * the served model where the provider named one, the configured one

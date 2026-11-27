@@ -9,6 +9,7 @@ import {
 	conversationBots,
 	createBot,
 	createConversation,
+	createTask,
 	createPlugin,
 	deleteBot,
 	deletePlugin,
@@ -23,6 +24,7 @@ import {
 	listMessagesPage,
 	pendingFeedback,
 	setSummary,
+	finishTask,
 	updateConversation,
 	type Bot,
 	type Conversation
@@ -100,6 +102,31 @@ function makeBot(name: string): Bot {
 }
 
 describe('buildHistory', () => {
+	it.each(['cancelled', 'error'] as const)(
+		'marks a prior %s user turn so its tool actions do not replay',
+		async (status) => {
+			const bot = createBot({ name: 'Latch', persona: '', avatar: '', color: '', model: '', badge: '' });
+			const conv = createConversation([bot.id], 'direct');
+			const priorAsk = 'Send Maple the QA-03 result once.';
+			addMessage(conv.id, 'user', priorAsk);
+			const priorTask = createTask(conv.id, bot.id, priorAsk, 'chat');
+			finishTask(priorTask.id, status);
+
+			// The human explicitly asks again with identical text; timestamps must
+			// bind the retry to its own running task and mark only the older message.
+			const latestAsk = priorAsk;
+			addMessage(conv.id, 'user', latestAsk);
+			createTask(conv.id, bot.id, latestAsk, 'chat');
+
+			const history = await buildHistory(conv, bot);
+			const userTurns = history.filter((message) => message.role === 'user');
+			expect(userTurns[0].content).toContain(`Earlier request; its bot turn was ${status}`);
+			expect(userTurns[0].content).toContain(priorAsk);
+			expect(userTurns[1].content).toBe(latestAsk);
+			expect(history[0].content).toContain('Only perform tool actions asked for in the latest user turn');
+		}
+	);
+
 	it('reserves helper fan-out for work that materially needs it', async () => {
 		const bot = createBot({ name: 'Latch', persona: '', avatar: '', color: '', model: '', badge: '' });
 		const conv = createConversation([bot.id], 'direct');
