@@ -3,6 +3,7 @@ import type { StreamOptions, StreamResult, ToolCall } from './llm';
 import { streamChat } from './llm';
 import { machineExec } from './machine';
 import {
+	addMessage,
 	createBot,
 	createConversation,
 	createTask,
@@ -295,7 +296,8 @@ describe('cancelling a task', () => {
 			return abortableStream([], opts);
 		});
 
-		const task = startTask(conv, bot, 'poke around');
+		addMessage(conv.id, 'user', 'Use your computer to look around.');
+		const task = startTask(conv, bot, 'Use your computer to look around.');
 		await vi.waitFor(() => expect(getTask(task.id)!.preview).toBe('let me look'));
 
 		expect(cancelTask(task.id)).toBe(true);
@@ -418,7 +420,8 @@ describe('progress fields', () => {
 			return fakeStream([' done'], { text: ' done', toolCalls: [] });
 		});
 
-		const task = startTask(conv, bot, 'look around');
+		addMessage(conv.id, 'user', 'Use your computer to look around.');
+		const task = startTask(conv, bot, 'Use your computer to look around.');
 		await vi.waitFor(() => expect(getTask(task.id)?.status).toBe('done'));
 
 		const row = getTask(task.id)!;

@@ -2279,20 +2279,82 @@ describe('toolsForTurn', () => {
 
 	it('diets an ordinary ask down to the core set, whatever the room', () => {
 		const held = toolsForTurn('anything at all').map((t) => t.function.name);
-		expect(held).toContain('use_computer');
+		expect(held).toContain('send_message');
+		expect(held).not.toContain('use_computer');
+		expect(held).not.toContain('list_files');
+		expect(held).not.toContain('read_file');
+		expect(held).not.toContain('grep_files');
 		expect(held).not.toContain('create_plugin');
 		expect(held).not.toContain('spawn_agent');
 	});
 
-	it('keeps helpers off simple calculations and peer relays', () => {
+	it('keeps helper, file and machine tools off simple calculations and peer relays', () => {
 		for (const ask of [
 			'Compute 47 + 58, then send Maple the exact result in one message.',
 			'Calculate 47 + 58 and compare it with 100.'
 		]) {
-			const held = toolsForTurn(ask, 'none').map((t) => t.function.name);
+			const held = toolsForTurn(ask).map((t) => t.function.name);
 			expect(held).not.toContain('spawn_agent');
+			expect(held).not.toContain('list_files');
+			expect(held).not.toContain('read_file');
+			expect(held).not.toContain('grep_files');
+			expect(held).not.toContain('company_profiles');
+			expect(held).not.toContain('use_computer');
 			if (ask.includes('send Maple')) expect(held).toContain('send_message');
 		}
+	});
+
+	it('offers file lookup without exposing the bot machine', () => {
+		for (const ask of [
+			'Read the shared /company files and summarize the report.',
+			'Read /company.'
+		]) {
+			const held = toolsForTurn(ask).map((t) => t.function.name);
+			expect(held).toContain('list_files');
+			expect(held).toContain('read_file');
+			expect(held).toContain('grep_files');
+			expect(held).toContain('company_profiles');
+			expect(held).not.toContain('use_computer');
+			expect(held).not.toContain('spawn_agent');
+		}
+	});
+
+	it('offers machine tools only when a computer task is explicit', () => {
+		const held = toolsForTurn('Use your computer to run a shell command.').map(
+			(t) => t.function.name
+		);
+		expect(held).toContain('use_computer');
+		expect(held).not.toContain('list_files');
+		expect(held).not.toContain('read_file');
+		expect(held).not.toContain('spawn_agent');
+	});
+
+	it('does not treat incidental computer or machine mentions as a task', () => {
+		const held = toolsForTurn('I am reading about computer science and machine learning.').map(
+			(t) => t.function.name
+		);
+		expect(held).not.toContain('use_computer');
+	});
+
+	it('does not carry file, machine or helper access forward from older asks', () => {
+		const held = toolsForTurn(
+			'Read /company, use your computer, and delegate independent research.',
+			'full',
+			'Compute 47 + 58.'
+		).map((t) => t.function.name);
+		expect(held).not.toContain('list_files');
+		expect(held).not.toContain('use_computer');
+		expect(held).not.toContain('spawn_agent');
+	});
+
+	it('does not expose gated tools for negated capability mentions', () => {
+		const held = toolsForTurn(
+			'Do not read /company or use your computer; just calculate the answer.',
+			'full'
+		).map((t) => t.function.name);
+		expect(held).not.toContain('list_files');
+		expect(held).not.toContain('company_profiles');
+		expect(held).not.toContain('use_computer');
 	});
 
 	it('offers helpers for explicit independent research or delegation', () => {

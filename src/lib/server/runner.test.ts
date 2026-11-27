@@ -135,6 +135,8 @@ describe('buildHistory', () => {
 		expect(system).toContain('Use spawn_agent only when the user asks you to delegate');
 		expect(system).toContain('Do not use it for arithmetic, simple transformations');
 		expect(system).toContain('Never inspect unrelated bot or /company files');
+		expect(system).toContain('Only inspect local or shared files when the latest request needs file work');
+		expect(system).toContain('Use machine tools only when the latest request actually needs your computer');
 	});
 
 	it('prefixes other bots’ messages with their name in group chats', async () => {
@@ -774,6 +776,15 @@ describe('runBotTurn', () => {
 		expect(res.message?.id).toBe(msgs[0].id);
 	});
 
+	it('leaves a full-tier machine asleep for ordinary chat', async () => {
+		addMessage(conv.id, 'user', 'Calculate 47 + 58.');
+		vi.mocked(streamChat).mockImplementation(() => fakeStream(['105'], { text: '105', toolCalls: [] }));
+
+		await runBotTurn(conv, bot);
+
+		expect(ensureMachine).not.toHaveBeenCalled();
+	});
+
 	it('runs an ordinary bot at low effort and the police at the maximum', async () => {
 		vi.mocked(streamChat).mockImplementation(() =>
 			fakeStream(['hi'], { text: 'hi', toolCalls: [] })
@@ -881,6 +892,7 @@ describe('runBotTurn', () => {
 	});
 
 	it('executes tool calls and feeds the result back into the next step', async () => {
+		addMessage(conv.id, 'user', 'List the files I uploaded.');
 		vi.mocked(streamChat)
 			.mockImplementationOnce(() =>
 				fakeStream([], {
@@ -900,6 +912,56 @@ describe('runBotTurn', () => {
 			tool_call_id: 't1',
 			content: 'The user has not given you any files.'
 		});
+	});
+
+	it('limits named group file and machine tools to each bot’s own assignment', async () => {
+		const aster = makeBot('Aster');
+		const bramble = makeBot('Bramble');
+		const room = createConversation([aster.id, bramble.id], 'group');
+		addMessage(
+			room.id,
+			'user',
+			`${aster.name}:\nRead the report in /company and summarize it.\n\n${bramble.name}:\nUse your computer to run a shell command.`
+		);
+		vi.mocked(streamChat).mockImplementation(() => fakeStream(['done'], { text: 'done', toolCalls: [] }));
+
+		await runBotTurn(room, aster, { noAutoDelegate: true });
+		await runBotTurn(getConversation(room.id)!, bramble, { noAutoDelegate: true });
+
+		const asterTools = vi.mocked(streamChat).mock.calls[0][0].tools?.map((tool) => tool.function.name) ?? [];
+		const brambleTools = vi.mocked(streamChat).mock.calls[1][0].tools?.map((tool) => tool.function.name) ?? [];
+		expect(asterTools).toContain('list_files');
+		expect(asterTools).not.toContain('use_computer');
+		expect(brambleTools).toContain('use_computer');
+		expect(brambleTools).not.toContain('list_files');
+	});
+
+	it('does not carry file or machine tools into an unrelated latest turn', async () => {
+		addMessage(conv.id, 'user', 'Read the report in /company.');
+		addMessage(conv.id, 'assistant', 'I read the requested report.', bot.id);
+		logEvent(conv.id, bot.id, 'computer', 'Used the computer to read the old report');
+		addMessage(conv.id, 'user', 'Compute 47 + 58.');
+		vi.mocked(streamChat).mockImplementation(() => fakeStream(['105'], { text: '105', toolCalls: [] }));
+
+		await runBotTurn(conv, bot);
+
+		const names = vi.mocked(streamChat).mock.calls[0][0].tools?.map((tool) => tool.function.name) ?? [];
+		expect(names).not.toContain('list_files');
+		expect(names).not.toContain('company_profiles');
+		expect(names).not.toContain('use_computer');
+	});
+
+	it('does not let an app event revive tools from an older human request', async () => {
+		addMessage(conv.id, 'user', 'Read the report in /company.');
+		logEvent(conv.id, bot.id, 'computer', 'Used the computer to read the report');
+		vi.mocked(streamChat).mockImplementation(() => fakeStream(['I can help.'], { text: 'I can help.', toolCalls: [] }));
+
+		await runBotTurn(conv, bot);
+
+		const names = vi.mocked(streamChat).mock.calls[0][0].tools?.map((tool) => tool.function.name) ?? [];
+		expect(names).not.toContain('list_files');
+		expect(names).not.toContain('company_profiles');
+		expect(names).not.toContain('use_computer');
 	});
 
 	it("separates a step's narration from the answer after its tool call", async () => {
@@ -969,6 +1031,7 @@ describe('runBotTurn', () => {
 
 
 	it('delegates computer work to a sub-agent instead of running it inline', async () => {
+		addMessage(conv.id, 'user', 'Use your computer to list files with a shell command.');
 		vi.mocked(machineExec).mockResolvedValue('file.txt');
 		vi.mocked(streamChat)
 			// Main loop: the bot asks for computer work.
@@ -1283,6 +1346,7 @@ describe('runBotTurn', () => {
 	});
 
 	it('refuses to run tool calls from a truncated stream', async () => {
+		addMessage(conv.id, 'user', 'Use your computer to list files with a shell command.');
 		vi.mocked(machineExec).mockResolvedValue('should not run');
 		vi.mocked(streamChat)
 			// The sub-agent's stream ends mid-tool-call: partial arguments that

@@ -1877,9 +1877,10 @@ export const BOT_TOOLS: ToolDef[] = [
 
 /**
  * The everyday half of the toolbox: what a turn needs to talk, remember, watch
- * and work. The rest - proposals, secrets, webhooks, plugins, peers, blocks,
- * deepwiki, debug, the staff board, the police's own lever - is EXTENDED_TOOLS,
- * and a turn only pays for it when the room or the ask calls for it.
+ * and work. File lookup, machine access and helper fan-out are separate sets,
+ * each added only when the ask needs that capability. The rest - proposals,
+ * secrets, webhooks, plugins, peers, blocks, deepwiki, debug, the staff board,
+ * the police's own lever - is EXTENDED_TOOLS.
  *
  * The archive vote is core, not extended: the lounge is a bots-only room, so a
  * vote called there is settled by turns running on CORE_TOOLS. Leaving cast_vote
@@ -1887,11 +1888,7 @@ export const BOT_TOOLS: ToolDef[] = [
  * it - the room could hear a vote and never cast one.
  */
 const CORE_TOOL_NAMES = new Set([
-	'use_computer',
 	'browse',
-	'sleep_machine',
-	'wake_machine',
-	'machine_status',
 	'send_message',
 	'remember',
 	'recall',
@@ -1905,11 +1902,6 @@ const CORE_TOOL_NAMES = new Set([
 	'cancel_task',
 	'search_history',
 	'search_web',
-	'list_files',
-	'read_file',
-	'read_lines',
-	'grep_files',
-	'read_output',
 	'vote_archive',
 	'cast_vote',
 	'consult_police',
@@ -1921,7 +1913,38 @@ const CORE_TOOL_NAMES = new Set([
 ]);
 
 export const CORE_TOOLS: ToolDef[] = BOT_TOOLS.filter((t) => CORE_TOOL_NAMES.has(t.function.name));
-export const EXTENDED_TOOLS: ToolDef[] = BOT_TOOLS.filter((t) => !CORE_TOOL_NAMES.has(t.function.name));
+
+const FILE_TOOL_NAMES = new Set([
+	'list_files',
+	'read_file',
+	'read_lines',
+	'grep_files',
+	'read_output',
+	'company_profiles'
+]);
+const FILE_TOOLS = BOT_TOOLS.filter((t) => FILE_TOOL_NAMES.has(t.function.name));
+
+const MACHINE_TOOL_NAMES = new Set([
+	'use_computer',
+	'sleep_machine',
+	'wake_machine',
+	'machine_status',
+	'request_machine_reset',
+	'request_ssh_access',
+	'nix'
+]);
+const MACHINE_TOOLS = BOT_TOOLS.filter((t) => MACHINE_TOOL_NAMES.has(t.function.name));
+
+const HELPER_TOOL_NAMES = new Set(['spawn_agent']);
+const HELPER_TOOLS = BOT_TOOLS.filter((t) => HELPER_TOOL_NAMES.has(t.function.name));
+
+export const EXTENDED_TOOLS: ToolDef[] = BOT_TOOLS.filter(
+	(t) =>
+		!CORE_TOOL_NAMES.has(t.function.name) &&
+		!FILE_TOOL_NAMES.has(t.function.name) &&
+		!MACHINE_TOOL_NAMES.has(t.function.name) &&
+		!HELPER_TOOL_NAMES.has(t.function.name)
+);
 
 /** Machine lifecycle and setup tools make no sense for a bot with no machine. */
 const MACHINE_REQUIRED_TOOL_NAMES = new Set([
@@ -1945,11 +1968,45 @@ const MACHINE_REQUIRED_TOOL_NAMES = new Set([
  * that") still rides the ask that named the need.
  */
 const EXTENDED_HINT =
-	/\b(propos\w*|secret\w*|cookie\w*|credential\w*|password\w*|webhook\w*|plugin\w*|peer\w*|federat\w*|another lounge|block\w*|unblock\w*|deepwiki|wiki|debug\w*|avatar|stylesheet|css|theme\w*|hat|wear|style\w*|bubble\w*|persona\w*|appearance|profile\w*|staff board|police|group chat|group room|new room|new bot|create (?:a )?bot|ssh|nix|packages?|install\w*|reset\w*|wipe|rebuild\w*|think(?:ing)? harder|change request|improv\w*|research\w*|compar\w*\s+(?:the\s+)?(?:\w+\s+)?(?:options?|approaches|products|sources)|parallel|independent|delegat\w*|helpers?)\b/i;
+	/\b(propos\w*|secret\w*|cookie\w*|credential\w*|password\w*|webhook\w*|plugin\w*|peer\w*|federat\w*|another lounge|block\w*|unblock\w*|deepwiki|wiki|debug\w*|avatar|stylesheet|css|theme\w*|hat|wear|style\w*|bubble\w*|persona\w*|appearance|profile\w*|staff board|police|group chat|group room|new room|new bot|create (?:a )?bot|install\w*|change request|improv\w*|research\w*|compar\w*\s+(?:the\s+)?(?:\w+\s+)?(?:options?|approaches|products|sources)|parallel|independent|delegat\w*|helpers?)\b/i;
 
-/** The tools a turn may see: the core set, or everything when the ask names an extended need. */
-export function toolsForTurn(recentUserText: string, machineTier = 'full'): ToolDef[] {
-	const selected = EXTENDED_HINT.test(recentUserText) ? BOT_TOOLS : CORE_TOOLS;
+/** Private/shared-drive reads are only offered when the ask names file work. */
+const FILE_HINT =
+	/(?:\b(file\w*|folder\w*|directories|shared drive|company drive|about page|staff board|company profiles)\b|\/company\b)/i;
+
+/** Tools that operate the bot's machine are only offered for machine tasks. */
+const MACHINE_HINT =
+	/\b(?:use|run|open|check|inspect|look at|wake|sleep|reset|wipe|rebuild|set up|setup|configure|install|request|access|connect to|ssh|status of)\b[^.!?;\n]{0,60}\b(?:your |my |the )?(?:computer|desktop|terminal|shell|machine|nix|ssh|packages?|sandbox)\b|\b(?:computer|desktop|terminal|shell|machine|sandbox)\s+(?:status|reset|wipe|rebuild)\b/i;
+
+/** Helper fan-out is for independent research or work the user asked to delegate. */
+const HELPER_HINT =
+	/\b(research\w*|parallel|independent|delegat\w*|helpers?|compar\w*\s+(?:the\s+)?(?:\w+\s+)?(?:options?|approaches|products|sources))\b/i;
+
+/** A negated capability mention is not an instruction to expose its tools. */
+const DENIED_CAPABILITY =
+	/\b(?:don't\s+(?!forget\b)|do not\s+(?!forget\b)|never|without|avoid|skip|no need to)\b[^,.!?;\n]{0,80}/gi;
+
+/** Compose only the tool sets the ask needs, then remove machine tools chat-only bots cannot use. */
+export function toolsForTurn(
+	recentUserText: string,
+	machineTier = 'full',
+	currentUserText = recentUserText
+): ToolDef[] {
+	const names = new Set(CORE_TOOL_NAMES);
+	const allowedCapabilityText = currentUserText.replace(DENIED_CAPABILITY, '');
+	if (EXTENDED_HINT.test(recentUserText)) {
+		for (const tool of EXTENDED_TOOLS) names.add(tool.function.name);
+	}
+	if (FILE_HINT.test(allowedCapabilityText)) {
+		for (const tool of FILE_TOOLS) names.add(tool.function.name);
+	}
+	if (MACHINE_HINT.test(allowedCapabilityText)) {
+		for (const tool of MACHINE_TOOLS) names.add(tool.function.name);
+	}
+	if (HELPER_HINT.test(allowedCapabilityText)) {
+		for (const tool of HELPER_TOOLS) names.add(tool.function.name);
+	}
+	const selected = BOT_TOOLS.filter((tool) => names.has(tool.function.name));
 	return machineTier === 'none'
 		? selected.filter((tool) => !MACHINE_REQUIRED_TOOL_NAMES.has(tool.function.name))
 		: selected;

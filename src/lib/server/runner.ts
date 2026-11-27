@@ -64,7 +64,6 @@ import { config } from './config';
 import { isPoliceRow, maybeRequestMiniReview, meterPoliceCall, policeModel, pubNote } from './police';
 import { thinkingGrant } from './thinking';
 import { MACHINE_PACKAGES } from './machine-packages';
-import { ensureMachine } from './machine';
 import { isSilence } from './silence';
 import type { TurnEvent } from './events';
 
@@ -414,6 +413,11 @@ export async function buildHistory(
 		'minutes after it starts. For work that should outlive this turn or rejoin ' +
 		'later, wait_for and schedule_task are the way - a wake brings the result ' +
 		'back to you.';
+	system +=
+		'\n\nOnly inspect local or shared files when the latest request needs file work. ' +
+		'Do not grep /company or use the computer to verify self-contained arithmetic, ' +
+		'test labels, chat messages or bot relays. Use machine tools only when the ' +
+		'latest request actually needs your computer.';
 	// A bot that narrates its own actions reads as a machine reporting to
 	// itself, not a person doing the work: "I will now check the file" is the
 	// tell, "checking the file" is the work. The same goes for its own name -
@@ -736,9 +740,41 @@ function namedGroupAssignment(prompt: string, bot: Bot, members: Bot[]): string 
 function recentUserText(history: ChatMessage[], count = 3): string {
 	const lines: string[] = [];
 	for (let i = history.length - 1; i >= 0 && lines.length < count; i--) {
-		if (history[i].role === 'user') lines.push(textOf(history[i].content));
+		if (history[i].role !== 'user') continue;
+		const text = textOf(history[i].content);
+		// Scheduler/tool events describe what happened, not what the human asks
+		// for now. They must not unlock file or machine tools on a later turn.
+		if (text.startsWith('[event]')) continue;
+		lines.push(text);
 	}
 	return lines.join('\n');
+}
+
+/**
+ * The newest actual human request in the transcript. App events and bot
+ * messages are context, never authority to expose private files, machine
+ * access or helper fan-out on a later turn.
+ */
+function requestTextForBot(prompt: string, conv: Conversation, bot: Bot): string {
+	if (conv.kind !== 'group') return prompt;
+	const focused = namedGroupAssignment(prompt, bot, conversationBots(conv.id));
+	if (!focused) return prompt;
+	// Only this bot's own assignment may grant a private-file or machine tool.
+	// Shared constraints and other bots' assignments remain model context, not
+	// authority for this bot to inspect files or operate a computer.
+	const own = focused.match(
+		/^You are [^\n]+\. Complete only this assignment addressed to you:\n([\s\S]*?)(?:\n\nDo not answer another bot's assignment|$)/
+	);
+	return own?.[1]?.trim() ?? '';
+}
+
+function currentHumanRequestText(conv: Conversation, bot: Bot): string {
+	const latestUser = listContextMessages(conv.id, 200)
+		.slice()
+		.reverse()
+		.find((message) => message.role === 'user');
+	if (!latestUser || latestUser.bot_id || latestUser.kind) return '';
+	return requestTextForBot(latestUser.content, conv, bot);
 }
 
 export interface BotTurnResult {
@@ -1282,16 +1318,6 @@ export async function runBotTurn(
 		if (handed) return handed;
 	}
 	logActivity(bot.id, 'thinking', `Replying in "${conv.title}"`);
-	// The machine wakes in the background while the model thinks: the tools
-	// that need it (shell_exec, use_computer, browse) all sit in the core set
-	// every turn carries, so a turn that reaches for one no longer pays the
-	// cold-start at the call. Chat-only bots are skipped, and ensureMachine
-	// itself is a no-op when the machine is already up - and its activity
-	// stamp is what the idle reaper reads, so this also keeps a chatting
-	// bot's machine from being slept mid-conversation.
-	if (bot.machine_tier !== 'none' && !opts.noTools) {
-		void ensureMachine(bot.id).catch(() => {});
-	}
 	const ctx: ToolContext = {
 		senderBotId: bot.id,
 		senderBotName: bot.name,
@@ -1419,6 +1445,7 @@ export async function runBotTurn(
 	let text = '';
 	let aborted = false;
 	let useTools = !opts.noTools;
+	let activeHumanRequestText = currentHumanRequestText(conv, bot);
 	let steps = 0;
 	// Every tool call the turn made, so the reply's claims can be checked
 	// against what actually ran rather than taken on the model's word.
@@ -1486,7 +1513,11 @@ export async function runBotTurn(
 	const turnTools = () =>
 		useTools
 			? [
-					...toolsForTurn(recentUserText(history), bot.machine_tier),
+					...toolsForTurn(
+						recentUserText(history),
+						bot.machine_tier,
+						activeHumanRequestText
+					),
 					...pluginToolsFor(bot.id),
 					...debugToolsFor(bot.id)
 				].filter(
@@ -1697,6 +1728,16 @@ export async function runBotTurn(
 			// was actually answering. This is the moment it was read, so whoever
 			// queued it is told - a steer the run ends without reading is left to
 			// its caller to answer instead of being taken on a promise.
+			const incomingText =
+				typeof event.message.content === 'string'
+					? event.message.content
+					: event.message.content
+							.filter((part) => part.type === 'text')
+							.map((part) => part.text)
+							.join('\n');
+			activeHumanRequestText = incomingText.startsWith('[event]')
+				? ''
+				: requestTextForBot(incomingText, conv, bot);
 			history.push(toChatMessage(event.message as unknown as Parameters<typeof toChatMessage>[0]));
 			const read = readOnDelivery.get(event.message as unknown as SteeredMessage);
 			if (read) {
