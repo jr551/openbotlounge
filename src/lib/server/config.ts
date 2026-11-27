@@ -1,3 +1,5 @@
+import { parseModelRoutes } from './model-routes';
+
 /**
  * OpenRouter is the default provider. It needs no pasted key - the app signs in
  * over OAuth - so a fresh install with no `.env` has a working provider rather
@@ -56,6 +58,8 @@ export const config = {
 	baseUrl:
 		envText(process.env.LLM_BASE_URL, DEFAULT_BASE_URL).replace(/\/+$/, '') || DEFAULT_BASE_URL,
 	apiKey: process.env.LLM_API_KEY ?? '',
+	/** Additional model-specific endpoints; the ordinary provider remains the default. */
+	modelRoutes: parseModelRoutes(process.env.LLM_MODEL_ROUTES_JSON),
 	/** Fallback model when the provider has no /models endpoint or none is picked. */
 	model: envText(process.env.LLM_MODEL, DEFAULT_MODEL),
 	/** Optional shared-password gate. Empty = no auth. */

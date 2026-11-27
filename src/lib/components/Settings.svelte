@@ -1367,7 +1367,7 @@
 								<span class="none">Loading…</span>
 							{/if}
 							<p class="hint">
-								Every bot calls this provider; a bot's edit dialog can still override the model.
+								Bots use this provider by default. A server-routed model uses its own endpoint when selected.
 							</p>
 						</section>
 

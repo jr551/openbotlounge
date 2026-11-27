@@ -110,7 +110,7 @@ async function fetchWithRetry(url: string, init: RequestInit): Promise<Response>
 export function redactCredentials(text: string): string {
 	const cfg = providerConfig();
 	let out = text;
-	for (const k of [config.apiKey, cfg.apiKey]) {
+	for (const k of [config.apiKey, cfg.apiKey, ...Object.values(config.modelRoutes).map((route) => route.apiKey)]) {
 		if (k && k.length >= 8) out = out.split(k).join('[redacted]');
 	}
 	// A refresh token is as spendable as the access token it mints.
@@ -212,13 +212,14 @@ let modelsCache: { baseUrl: string; ids: string[] } | null = null;
 
 export function listModels(signal?: AbortSignal): Promise<string[]> {
 	const cfg = providerConfig();
+	const withRoutedModels = (ids: string[]) => [...new Set([...ids, ...Object.keys(config.modelRoutes)])];
 	// The Codex backend an OAuth sign-in calls has no /models listing; the
 	// catalogue's list for that endpoint is the honest answer, with the
 	// configured model first.
 	if (parseOAuthSession(cfg.oauth)) {
 		const ids = (providerForBaseUrl(cfg.baseUrl)?.models ?? []).slice();
 		if (config.model && !ids.includes(config.model)) ids.unshift(config.model);
-		return Promise.resolve(ids);
+		return Promise.resolve(withRoutedModels(ids));
 	}
 	// A different endpoint's list is no answer for this one.
 	const cached = modelsCache?.baseUrl === cfg.baseUrl ? modelsCache.ids : null;
@@ -227,8 +228,9 @@ export function listModels(signal?: AbortSignal): Promise<string[]> {
 			// Only a real answer is cached: a failed fetch keeps the last good
 			// list so a provider outage does not blank the picker. The
 			// configured model stands in when nothing has ever answered.
-			if (ids) modelsCache = { baseUrl: cfg.baseUrl, ids };
-			return ids ?? cached ?? (config.model ? [config.model] : []);
+			const available = withRoutedModels(ids ?? cached ?? (config.model ? [config.model] : []));
+			if (ids) modelsCache = { baseUrl: cfg.baseUrl, ids: available };
+			return available;
 		})
 		.finally(() => {
 			modelsInFlight = null;
@@ -492,13 +494,16 @@ function tapServedModel(fetchImpl: typeof fetch): {
  */
 
 export async function* streamChat(opts: StreamOptions): AsyncGenerator<string, StreamResult> {
+	const routed = config.modelRoutes[opts.model];
 	const endpoint = opts.endpoint
 		? {
 				baseUrl: opts.endpoint.baseUrl,
 				apiKey: opts.endpoint.apiKey,
 				oauth: opts.endpoint.codex ? { accountId: '' } : undefined
 			}
-		: await resolveEndpoint();
+		: routed
+			? { baseUrl: routed.baseUrl, apiKey: routed.apiKey }
+			: await resolveEndpoint();
 	const context = toPiContext(opts);
 	// The app's model id rides on a Model whose api picks the wire adapter:
 	// chat completions for a plain endpoint, the Codex responses adapter for an
@@ -512,8 +517,8 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<string, S
 		reasoning: true,
 		input: ['text', 'image'],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-		contextWindow: 128_000,
-		maxTokens: 16_000,
+		contextWindow: routed?.contextWindow ?? 128_000,
+		maxTokens: routed?.maxTokens ?? 16_000,
 		// The gateway fronts many providers; several (deepseek et al) 422 on the
 		// 'developer' role the adapter prefers for reasoning models. 'system' is
 		// the name every one of them accepts.

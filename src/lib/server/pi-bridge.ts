@@ -53,6 +53,7 @@ import {
 	getCurrentTools,
 	withoutInitialSystemMessage
 } from '@earendil-works/pi-ai/utils/transcript';
+import { config } from './config';
 import { parseOAuthSession, providerConfig } from './db';
 import { LOUNGE_PROVIDER_ID, loungeRuntime } from './pi-runtime';
 import { streamChat, textOf, type ChatMessage, type StreamResult, type ToolDef } from './llm';
@@ -95,6 +96,12 @@ export function registerLoungeProvider(
 
 	const cfg = providerConfig();
 	const session = parseOAuthSession(cfg.oauth);
+	const modelId = overrides.model || 'default';
+	const route = config.modelRoutes[modelId];
+	// The runtime is shared across concurrent bot turns. Keep its registered
+	// credentials on the primary provider; loungeStream applies a model route
+	// from the call's own model ID so a local bot cannot replace DeepSeek's key
+	// while another bot is already running.
 	const baseUrl = (overrides.baseUrl ?? cfg.baseUrl).replace(/\/+$/, '');
 	const apiKey = overrides.apiKey ?? cfg.apiKey;
 	// pi's api adapters refuse an empty key ("No API key for provider") where
@@ -102,7 +109,6 @@ export function registerLoungeProvider(
 	// for this is the literal placeholder "unused" - a Bearer header a keyless
 	// endpoint ignores.
 	const effectiveKey = apiKey || 'unused';
-	const modelId = overrides.model || 'default';
 	const codex = session !== null;
 	runtime.registerProvider(LOUNGE_PROVIDER_ID, {
 		name: 'OpenBotLounge provider',
@@ -119,14 +125,18 @@ export function registerLoungeProvider(
 				reasoning: true,
 				input: ['text', 'image'],
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-				contextWindow: 128_000,
-				maxTokens: 32_000
+				contextWindow: route?.contextWindow ?? 128_000,
+				maxTokens: route?.maxTokens ?? 32_000
 			}
 		]
 	});
 	const model = runtime.getModel(LOUNGE_PROVIDER_ID, modelId);
 	if (!model) throw new Error('registered model not found');
-	return { model, kind: codex ? 'codex' : 'openai', baseUrl };
+	return {
+		model,
+		kind: route ? 'openai' : codex ? 'codex' : 'openai',
+		baseUrl: route?.baseUrl ?? baseUrl
+	};
 }
 
 /** A zeroed usage record for a message that never got one. */
@@ -238,6 +248,7 @@ function loungeStream(
 		}
 	}));
 	const effort = options?.reasoning;
+	const route = config.modelRoutes[model.id];
 	const partial: AssistantMessage = {
 		role: 'assistant',
 		content: [{ type: 'text', text: '' }],
@@ -267,9 +278,9 @@ function loungeStream(
 				// session registered with a different baseUrl or key (a test's
 				// fake provider, an operator override) must reach that endpoint.
 				endpoint: {
-					baseUrl: model.baseUrl,
-					apiKey: options?.apiKey ?? '',
-					codex: model.api === 'openai-codex-responses'
+					baseUrl: route?.baseUrl ?? model.baseUrl,
+					apiKey: route ? route.apiKey : options?.apiKey ?? '',
+					codex: route ? false : model.api === 'openai-codex-responses'
 				}
 			});
 			let result: StreamResult | undefined;

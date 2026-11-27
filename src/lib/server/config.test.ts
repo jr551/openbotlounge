@@ -9,6 +9,7 @@ const ENV_KEYS = [
 	'LLM_BASE_URL',
 	'LLM_API_KEY',
 	'LLM_MODEL',
+	'LLM_MODEL_ROUTES_JSON',
 	'APP_PASSWORD',
 	'SESSION_SECRET',
 	'DATA_DIR',
@@ -64,6 +65,7 @@ describe('config: defaults', () => {
 			baseUrl: 'https://openrouter.ai/api/v1',
 			apiKey: '',
 			model: 'deepseek/deepseek-v4.1-flash',
+			modelRoutes: {},
 			password: '',
 			sessionSecret: '',
 			dataDir: './data',
@@ -77,6 +79,19 @@ describe('config: defaults', () => {
 			userName: 'you',
 			socialIntervalMin: 60,
 			providerTestAllowPrivate: false
+		});
+	});
+});
+
+describe('config: model routes', () => {
+	it('loads server-configured routes at startup', async () => {
+		const c = await loadConfig({
+			LLM_MODEL_ROUTES_JSON: JSON.stringify({
+				inkling: { baseUrl: 'http://inkling.example/v1', apiKey: '', contextWindow: 32_768 }
+			})
+		});
+		expect(c.modelRoutes).toEqual({
+			inkling: { baseUrl: 'http://inkling.example/v1', apiKey: '', contextWindow: 32_768 }
 		});
 	});
 });

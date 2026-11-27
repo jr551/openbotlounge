@@ -19,6 +19,7 @@ import { zstdDecompressSync } from 'node:zlib';
 import type { AddressInfo } from 'node:net';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from '@earendil-works/pi-ai';
+import { config } from './config';
 import { addMessage, createBot, createConversation, listMemories, listMessages, setSetting } from './db';
 import {
 	createLoungeSession,
@@ -161,6 +162,94 @@ describe('pi spike - provider seam', () => {
 			expect(texts.join('')).toBe('hello from pi');
 		} finally {
 			server.close();
+		}
+	});
+
+	it('registers and uses a model-specific endpoint while leaving the default provider alone', async () => {
+		const id = 'inkling-spike-model';
+		const { server, url, seen } = await sseServer('/v1/chat/completions', [
+			{ choices: [{ delta: { content: 'from Inkling' } }] },
+			{ choices: [{ delta: {}, finish_reason: 'stop' }] }
+		]);
+		config.modelRoutes[id] = {
+			baseUrl: `${url}/v1`,
+			apiKey: 'inkling-route-key',
+			contextWindow: 32_768,
+			maxTokens: 4_096
+		};
+		try {
+			const runtime = await loungeRuntime();
+			const { model, kind, baseUrl } = registerLoungeProvider(runtime, { model: id });
+			expect(kind).toBe('openai');
+			expect(baseUrl).toBe(`${url}/v1`);
+			expect(model.contextWindow).toBe(32_768);
+			expect(model.maxTokens).toBe(4_096);
+			const { session } = await createLoungeSession({
+				model,
+				modelRuntime: runtime,
+				systemPrompt: 'You are a routed bot.'
+			});
+			const texts = watchText(session);
+			await session.prompt('say hi');
+			session.dispose();
+			expect(seen).toHaveLength(1);
+			expect(seen[0].url).toBe('/v1/chat/completions');
+			expect(seen[0].headers.authorization).toBe('Bearer inkling-route-key');
+			expect(texts.join('')).toBe('from Inkling');
+		} finally {
+			delete config.modelRoutes[id];
+			server.close();
+		}
+	});
+
+	it('keeps primary and routed credentials isolated across simultaneous turns', async () => {
+		const primary = await sseServer('/v1/chat/completions', [
+			{ choices: [{ delta: { content: 'from DeepSeek' } }] },
+			{ choices: [{ delta: {}, finish_reason: 'stop' }] }
+		]);
+		const inkling = await sseServer('/v1/chat/completions', [
+			{ choices: [{ delta: { content: 'from Inkling' } }] },
+			{ choices: [{ delta: {}, finish_reason: 'stop' }] }
+		]);
+		const id = 'inkling-concurrent-model';
+		config.modelRoutes[id] = { baseUrl: `${inkling.url}/v1`, apiKey: 'inkling-key' };
+		setSetting('provider_base_url', `${primary.url}/v1`);
+		setSetting('provider_api_key', 'deepseek-key');
+		setSetting('provider_oauth', '');
+		try {
+			const runtime = await loungeRuntime();
+			const primaryModel = registerLoungeProvider(runtime, { model: 'deepseek-spike-model' }).model;
+			const inklingModel = registerLoungeProvider(runtime, { model: id }).model;
+			const primaryTurn = await createLoungeSession({
+				model: primaryModel,
+				modelRuntime: runtime,
+				systemPrompt: 'You are a DeepSeek bot.'
+			});
+			const inklingTurn = await createLoungeSession({
+				model: inklingModel,
+				modelRuntime: runtime,
+				systemPrompt: 'You are an Inkling bot.'
+			});
+			const primaryText = watchText(primaryTurn.session);
+			const inklingText = watchText(inklingTurn.session);
+			await Promise.all([
+				primaryTurn.session.prompt('say hi'),
+				inklingTurn.session.prompt('say hi')
+			]);
+			primaryTurn.session.dispose();
+			inklingTurn.session.dispose();
+			expect(primary.seen).toHaveLength(1);
+			expect(inkling.seen).toHaveLength(1);
+			expect(primary.seen[0].headers.authorization).toBe('Bearer deepseek-key');
+			expect(inkling.seen[0].headers.authorization).toBe('Bearer inkling-key');
+			expect(primaryText.join('')).toBe('from DeepSeek');
+			expect(inklingText.join('')).toBe('from Inkling');
+		} finally {
+			delete config.modelRoutes[id];
+			setSetting('provider_base_url', '');
+			setSetting('provider_api_key', '');
+			primary.server.close();
+			inkling.server.close();
 		}
 	});
 

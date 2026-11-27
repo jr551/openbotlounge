@@ -1017,3 +1017,36 @@ describe('listModels under a provider that cannot answer', () => {
 		}
 	});
 });
+
+describe('model-specific provider routes', () => {
+	it('sends a routed model to its endpoint without calling the default provider', async () => {
+		const route = new FakeProvider();
+		await route.start();
+		const id = 'inkling-test-model';
+		config.modelRoutes[id] = { baseUrl: route.baseUrl, apiKey: 'route-key-123' };
+		provider.reset();
+		route.queue([delta({ content: 'local answer' }), DONE]);
+		try {
+			const { result } = await drain(
+				streamChat({ model: id, messages: [{ role: 'user', content: 'say hi' }] })
+			);
+			expect(result.text).toBe('local answer');
+			expect(route.requests).toHaveLength(1);
+			expect(route.requests[0].headers?.authorization).toBe('Bearer route-key-123');
+			expect(provider.requests).toHaveLength(0);
+		} finally {
+			delete config.modelRoutes[id];
+			await route.stop();
+		}
+	});
+
+	it('includes configured model IDs in the picker alongside the default provider', async () => {
+		const id = 'inkling-picker-model';
+		config.modelRoutes[id] = { baseUrl: 'http://127.0.0.1:1/v1', apiKey: '' };
+		try {
+			await expect(listModels()).resolves.toContain(id);
+		} finally {
+			delete config.modelRoutes[id];
+		}
+	});
+});

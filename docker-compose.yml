@@ -10,6 +10,8 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-}
       # Empty here means "use the app's default model" (DeepSeek v4.1 Flash).
       LLM_MODEL: ${LLM_MODEL:-}
+      # Optional additional model ID -> provider routes; see .env.example.
+      LLM_MODEL_ROUTES_JSON: ${LLM_MODEL_ROUTES_JSON:-}
       # Let the Test-connection button reach a local model server (loopback/LAN).
       PROVIDER_TEST_ALLOW_PRIVATE: ${PROVIDER_TEST_ALLOW_PRIVATE:-false}
       # Exa (exa.ai) key for the bots' search_web tool; optional.
