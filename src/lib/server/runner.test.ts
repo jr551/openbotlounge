@@ -151,6 +151,22 @@ describe('buildHistory', () => {
 		expect(system).toContain('Do not explain that nothing is pending, there is no thread');
 	});
 
+	it.each([
+		['okz', 'only an acknowledgement'],
+		['k.', 'only an acknowledgement'],
+		['plz', 'an incomplete request'],
+		['i would quite like', 'an incomplete request']
+	])('adds last-turn guidance for "%s"', async (prompt, expected) => {
+		const bot = createBot({ name: 'Latch', persona: '', avatar: '', color: '', model: '', badge: '' });
+		const conv = createConversation([bot.id], 'direct');
+		addMessage(conv.id, 'user', prompt);
+
+		const latest = (await buildHistory(conv, bot)).at(-1);
+		expect(latest?.role).toBe('user');
+		expect(latest?.content).toContain('[App guidance for this reply]');
+		expect(latest?.content).toContain(expected);
+	});
+
 	it('prefixes other bots’ messages with their name in group chats', async () => {
 		const a = createBot({ name: 'Alpha', persona: 'You are Alpha.', avatar: '', color: '', model: '', badge: '' });
 		const b = createBot({ name: 'Beta', persona: 'You are Beta.', avatar: '', color: '', model: '', badge: '' });

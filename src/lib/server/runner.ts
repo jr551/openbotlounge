@@ -632,7 +632,55 @@ export async function buildHistory(
 		// asking this bot to perform those tasks.
 		history.push({ role: 'user', content: `[App guidance for this group reply]\n${focusedGroupAsk}` });
 	}
+	const latestUserMessage = [...rows].reverse().find((message) => message.role === 'user');
+	if (!conv.private && latestUserMessage && !latestUserMessage.bot_id && !latestUserMessage.kind) {
+		const fragmentGuidance = shortFragmentGuidance(latestUserMessage.content);
+		if (fragmentGuidance) {
+			history.push({ role: 'user', content: `[App guidance for this reply]\n${fragmentGuidance}` });
+		}
+	}
 	return history;
+}
+
+/** Keep familiar one-word nudges from turning into long, memory-led replies. */
+function shortFragmentGuidance(prompt: string): string | null {
+	const trimmed = prompt.trim();
+	if (!trimmed || trimmed.length > 48 || /\r?\n/.test(trimmed)) return null;
+	const key = trimmed.toLocaleLowerCase().replace(/[.!?…]+$/, '').trim();
+	const acknowledgements = new Set([
+		'ok',
+		'okay',
+		'okz',
+		'k',
+		'kk',
+		'got it',
+		'thanks',
+		'thank you',
+		'cool',
+		'yep',
+		'yeah',
+		'sure',
+		'right',
+		'fine'
+	]);
+	if (acknowledgements.has(key)) {
+		return `The latest message ${JSON.stringify(trimmed)} is only an acknowledgement, not a request. Reply with a brief acknowledgement in 12 words or fewer. Do not ask a follow-up or mention memories, old tasks, threads or pending work.`;
+	}
+	const incomplete = new Set([
+		'plz',
+		'please',
+		'i would quite like',
+		'i would like',
+		'could you',
+		'can you',
+		'would you',
+		'help',
+		'help me'
+	]);
+	if (incomplete.has(key)) {
+		return `The latest message ${JSON.stringify(trimmed)} is an incomplete request. Ask one short clarifying question, such as "What would you like me to do?" Do not mention memories, old tasks, threads or pending work.`;
+	}
+	return null;
 }
 
 /**

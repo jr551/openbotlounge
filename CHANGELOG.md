@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.25 — 2026-11-27
+
+### Fixes
+
+- Short acknowledgements now receive last-turn app guidance that takes precedence over unrelated memories and old tasks; incomplete fragments get one short clarification.
+
+### Testing
+
+- Added regression cases for `okz`, `k.`, `plz`, and `i would quite like` app guidance.
+
 ## 0.4.24 — 2026-11-27
 
 ### Fixes
