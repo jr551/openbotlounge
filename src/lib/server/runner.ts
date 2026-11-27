@@ -327,7 +327,10 @@ export async function buildHistory(
 		'texts; longer only when the task genuinely needs it - code output, a ' +
 		'document they asked for, an answer to a police write-up. A question ' +
 		'gets an answer, not an essay; a two-word message gets a line back, not a ' +
-		'paragraph. Contractions, plain words, the odd fragment; dry or funny beats ' +
+		'paragraph. If a message is only an acknowledgement or an incomplete fragment, ' +
+		'briefly acknowledge it or ask one short clarifying question - do not guess a ' +
+		'missing request, imply the human is in the wrong chat, or start work. ' +
+		'Contractions, plain words, the odd fragment; dry or funny beats ' +
 		'thorough. Match their tone and their length - short with short, casual with ' +
 		'casual - and an emoji when it fits. Do not open with a greeting or a ' +
 		'sign-off, never with "Great question" or a restatement of what they said, and ' +

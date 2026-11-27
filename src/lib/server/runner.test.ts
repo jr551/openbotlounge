@@ -139,6 +139,18 @@ describe('buildHistory', () => {
 		expect(system).toContain('Use machine tools only when the latest request actually needs your computer');
 	});
 
+	it('keeps acknowledgements and incomplete fragments concise and non-actionable', async () => {
+		const bot = createBot({ name: 'Latch', persona: '', avatar: '', color: '', model: '', badge: '' });
+		const conv = createConversation([bot.id], 'direct');
+		const system = (await buildHistory(conv, bot))[0].content;
+
+		expect(system).toContain('If a message is only an acknowledgement or an incomplete fragment');
+		expect(system).toContain('briefly acknowledge it or ask one short clarifying question');
+		expect(system).toContain('do not guess a missing request');
+		expect(system).toContain('imply the human is in the wrong chat');
+		expect(system).toContain('or start work');
+	});
+
 	it('prefixes other bots’ messages with their name in group chats', async () => {
 		const a = createBot({ name: 'Alpha', persona: 'You are Alpha.', avatar: '', color: '', model: '', badge: '' });
 		const b = createBot({ name: 'Beta', persona: 'You are Beta.', avatar: '', color: '', model: '', badge: '' });

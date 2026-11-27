@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.23 — 2026-11-27
+
+### Fixes
+
+- Short acknowledgements and incomplete fragments now get explicit guidance to reply briefly, ask one concise clarification, and avoid guessing at missing context or starting unrequested work.
+
+### Testing
+
+- Added the owner's terse-message and pasted local-model `curl` examples to tool-gating regression coverage.
+
 ## 0.4.22 — 2026-11-27
 
 ### Fixes

@@ -2289,6 +2289,23 @@ describe('toolsForTurn', () => {
 		expect(held).not.toContain('browse');
 	});
 
+	it('keeps tools gated for terse acknowledgements and pasted API commands', () => {
+		for (const ask of [
+			'i would quite like',
+			'okz',
+			'plz',
+			'k.',
+			`curl http://127.0.0.1:8080/v1/chat/completions` +
+				` -H 'Content-Type: application/json' -d '{"model":"inkling-2-mini-uncensored","messages":[{"role":"user","content":"Reply with exactly: no auth works"}]}'`
+		]) {
+			const held = toolsForTurn(ask).map((t) => t.function.name);
+			expect(held).not.toContain('browse');
+			expect(held).not.toContain('list_files');
+			expect(held).not.toContain('use_computer');
+			expect(held).not.toContain('spawn_agent');
+		}
+	});
+
 	it('keeps helper, file and machine tools off simple calculations and peer relays', () => {
 		for (const ask of [
 			'Compute 47 + 58, then send Maple the exact result in one message.',
