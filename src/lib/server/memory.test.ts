@@ -195,6 +195,27 @@ describe('maybeSummarize', () => {
 		expect(completeMock).toHaveBeenCalledTimes(2);
 	});
 
+	it('folds older messages that share the newest user message timestamp', async () => {
+		const clock = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+		try {
+			const bot = makeBot('SameMillisecondBot');
+			const conv = createConversation([bot.id], 'group');
+			fillMessages(conv.id, 41);
+			await maybeSummarize(conv.id, 'm1');
+
+			expect(completeMock).toHaveBeenCalledTimes(2);
+			const messages = listMessages(conv.id);
+			expect(messages.slice(0, -1).every((m) => Boolean(m.excluded))).toBe(true);
+			expect(messages.at(-1)?.excluded).toBe(0);
+
+			addMessage(conv.id, 'user', 'one more');
+			await maybeSummarize(conv.id, 'm1');
+			expect(completeMock).toHaveBeenCalledTimes(2);
+		} finally {
+			clock.mockRestore();
+		}
+	});
+
 	it('spends no summary when the span holds only short app notes', async () => {
 		const bot = makeBot('SumBot');
 		const conv = createConversation([bot.id], 'group');

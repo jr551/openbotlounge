@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.21 — 2026-11-27
+
+### Fixes
+
+- Browser access is no longer part of the broad extended-tool bundle. It is offered for explicit web work, while pasted `curl`/HTTP API examples and quoted instructions stay data.
+- Browser navigation refuses non-HTTP(S) URLs, file links and redirects are blocked, and screenshots fail closed if any browser page cannot be verified as HTTP(S).
+- Memory compaction now uses row order to fold older messages that share a millisecond with the newest user message, avoiding repeated summaries of the same burst.
+
 ## 0.4.10 — 2026-11-27
 
 ### Fixes

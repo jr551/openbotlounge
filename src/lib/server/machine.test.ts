@@ -28,12 +28,29 @@ const { fakeDocker, execCalls, containers, volumes, networks, flags, execResult 
 	// Knobs tests turn to steer the fake: whether the desktop's processes are
 	// up, whether its setup script is mid-run, and whether the pane capture
 	// should fail (a container restarted without its tmux server).
-	const flags = { desktopUp: false, desktopScriptRunning: false, captureFails: false, stageFile: '', cookieJar: '', toolsetMissing: false, netCreateFails: false, netMissing: false, windowTitle: '' };
+	const flags = {
+		desktopUp: false,
+		desktopScriptRunning: false,
+		captureFails: false,
+		stageFile: '',
+		cookieJar: '',
+		toolsetMissing: false,
+		netCreateFails: false,
+		netMissing: false,
+		windowTitle: '',
+		browserUrl: ''
+	};
 	// Networks the daemon knows about; create fills it, delete empties it.
 	const networks: { Name: string; Id: string }[] = [];
 	// What the daemon would answer for a command.
 	const execResult = (cmd: string[]) => {
 		const joined = cmd.join(' ');
+		if (joined.includes('/json/list')) {
+			return {
+				output: JSON.stringify({ urls: [flags.browserUrl] }),
+				exitCode: 0
+			};
+		}
 		// The CDP driver's cookie read: the test hands it the jar it should
 		// report, so the app's own site filter is what is under test.
 		if (joined.includes('obl-cdp.mjs cookies')) {
@@ -371,6 +388,8 @@ import {
 	machineExec,
 	machineName,
 	machineStatus,
+	machineScreenshot,
+	navigateBrowser,
 	normalizeSite,
 	presenceForBots,
 	recordDriving,
@@ -449,6 +468,7 @@ beforeEach(async () => {
 	flags.netCreateFails = false;
 	flags.netMissing = false;
 	flags.windowTitle = '';
+	flags.browserUrl = '';
 	dir = config.dataDir;
 	const bot = createBot({ name: `Bot${Date.now()}`, persona: '', avatar: '', color: '', model: '', badge: '' });
 	botId = bot.id;
@@ -733,6 +753,38 @@ describe('machine lifecycle', () => {
 		await removeOrphanMachines(new Set([botId]));
 		expect(containers.find((c) => c.Id === 'orphan1')).toBeUndefined();
 		expect(containers.filter((c) => (c.Labels as Record<string,string>)['obl.kind'] === 'machine')).toHaveLength(1);
+	});
+});
+
+describe('browser URL guard', () => {
+	it('refuses local file URLs before waking the machine', async () => {
+		await expect(navigateBrowser(botId, 'file:///company')).rejects.toThrow(
+			'only http and https URLs can be opened'
+		);
+		expect(execCalls).toHaveLength(0);
+		expect(vi.mocked(dockerRequest)).not.toHaveBeenCalled();
+	});
+
+	it('does not send a screenshot of an already-open local file page to the model', async () => {
+		flags.browserUrl = 'file:///company';
+		updateBot(botId, { browser_recipe: 'chromium' });
+
+		await expect(machineScreenshot(botId)).rejects.toThrow(
+			'screenshots require every browser page to use http or https'
+		);
+
+		expect(execCalls.some((call) => call.cmd.join(' ').includes(screenshotCommand()))).toBe(false);
+	});
+
+	it('fails closed if the browser has no verifiable page URL', async () => {
+		flags.browserUrl = '';
+		updateBot(botId, { browser_recipe: 'chromium' });
+
+		await expect(machineScreenshot(botId)).rejects.toThrow(
+			'screenshots require every browser page to use http or https'
+		);
+
+		expect(execCalls.some((call) => call.cmd.join(' ').includes(screenshotCommand()))).toBe(false);
 	});
 });
 

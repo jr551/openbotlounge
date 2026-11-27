@@ -2050,7 +2050,7 @@ export function deleteConversation(id: string): boolean {
 
 export function listMessages(conversationId: string): Message[] {
 	return db
-		.prepare('SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC')
+		.prepare('SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC')
 		.all(conversationId) as unknown as Message[];
 }
 
@@ -2402,15 +2402,23 @@ export function collapseContext(conversationId: string): void {
 export function collapseContextUpTo(conversationId: string, until: number): void {
 	const tail = db
 		.prepare(
-			`SELECT created_at FROM messages
+			`SELECT rowid, created_at FROM messages
 			 WHERE conversation_id = ? AND role = 'user'
-			 ORDER BY created_at DESC LIMIT 1`
+			 ORDER BY created_at DESC, rowid DESC LIMIT 1`
 		)
-		.get(conversationId) as { created_at: number } | undefined;
+		.get(conversationId) as { rowid: number; created_at: number } | undefined;
 	const cap = tail ? Math.min(until, tail.created_at - 1) : until;
 	db.prepare(
 		'UPDATE messages SET excluded = 1 WHERE conversation_id = ? AND created_at <= ?'
 	).run(conversationId, cap);
+	// Millisecond timestamps can tie. Fold same-time rows before the newest
+	// user row by rowid too, while leaving that request and its later replies in
+	// context. Without this tie-break, a whole burst can stay live forever.
+	if (tail && until >= tail.created_at) {
+		db.prepare(
+			'UPDATE messages SET excluded = 1 WHERE conversation_id = ? AND created_at = ? AND rowid < ?'
+		).run(conversationId, tail.created_at, tail.rowid);
+	}
 }
 
 export function addMessage(

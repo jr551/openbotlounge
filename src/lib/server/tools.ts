@@ -1888,7 +1888,6 @@ export const BOT_TOOLS: ToolDef[] = [
  * it - the room could hear a vote and never cast one.
  */
 const CORE_TOOL_NAMES = new Set([
-	'browse',
 	'send_message',
 	'remember',
 	'recall',
@@ -1940,6 +1939,7 @@ const HELPER_TOOLS = BOT_TOOLS.filter((t) => HELPER_TOOL_NAMES.has(t.function.na
 
 export const EXTENDED_TOOLS: ToolDef[] = BOT_TOOLS.filter(
 	(t) =>
+		t.function.name !== 'browse' &&
 		!CORE_TOOL_NAMES.has(t.function.name) &&
 		!FILE_TOOL_NAMES.has(t.function.name) &&
 		!MACHINE_TOOL_NAMES.has(t.function.name) &&
@@ -1982,6 +1982,14 @@ const MACHINE_HINT =
 const HELPER_HINT =
 	/\b(research\w*|parallel|independent|delegat\w*|helpers?|compar\w*\s+(?:the\s+)?(?:\w+\s+)?(?:options?|approaches|products|sources))\b/i;
 
+/** The browser operator is only offered for an explicit page or web task. */
+const BROWSER_HINT =
+	/\b(?:browse|browser|webpage|web\s+page|website|web\s+site|internet|navigate|visit)\b|\b(?:open|read|check|review|inspect|look at)\b[^.!?;\n]{0,50}\b(?:page|site|url|website|webpage)\b/i;
+
+/** A pasted HTTP client/API example is command data, not a browser request. */
+const HTTP_CLIENT_HINT = /\b(?:curl|wget)\b|\/v\d+\/(?:chat\/completions|responses|embeddings)\b/i;
+const WEB_URL_HINT = /https?:\/\/|www\./i;
+
 /** A negated capability mention is not an instruction to expose its tools. */
 const DENIED_CAPABILITY =
 	/\b(?:don't\s+(?!forget\b)|do not\s+(?!forget\b)|never|without|avoid|skip|no need to)\b[^,.!?;\n]{0,80}/gi;
@@ -1989,8 +1997,28 @@ const DENIED_CAPABILITY =
 const QUOTED_DATA =
 	/```[\s\S]*?```|~~~[\s\S]*?~~~|"(?:\\.|[^"\\])*"|`[^`\n]*`|“[^”\n]*”|‘[^’\n]*’|(?<!\w)'[^'\n]+'(?!\w)/g;
 
-export function withoutQuotedData(text: string, keepAsFileTarget = false): string {
+export function withoutQuotedData(
+	text: string,
+	keepAsFileTarget = false,
+	keepAsWebTarget = false
+): string {
 	return text.replace(QUOTED_DATA, (quoted, offset: number, source: string) => {
+		if (keepAsWebTarget) {
+			const before = source.slice(Math.max(0, offset - 80), offset);
+			const after = source.slice(offset + quoted.length, offset + quoted.length + 60);
+			const isWebTarget =
+				/^https?:\/\/[^\s"'<>]+$/i.test(quoted.slice(1, -1).trim()) &&
+				!/\b(?:quote|quoted|phrase|string|text|sentence|example|literal|data|command|prompt)\b/i.test(
+					before
+				) &&
+				!/^[\s,;:]*(?:as\s+(?:a\s+|an\s+)?(?:quote|quoted text|phrase|string|text|sentence|example|literal|data|command|prompt))\b/i.test(
+					after
+				) &&
+				/\b(?:open|visit|browse|read|check|review|inspect|navigate|look(?:\s+at)?)\b[^.!?;]{0,60}$/i.test(
+					before
+				);
+			if (isWebTarget) return quoted.slice(1, -1);
+		}
 		if (keepAsFileTarget) {
 			const before = source.slice(Math.max(0, offset - 80), offset);
 			const after = source.slice(offset + quoted.length, offset + quoted.length + 60);
@@ -2003,7 +2031,7 @@ export function withoutQuotedData(text: string, keepAsFileTarget = false): strin
 			const looksLikeFileTarget =
 				/^(?:\/|~\/|\.{1,2}\/)[^\r\n]*$/.test(target) ||
 				/^[\w.-]+(?:\/[\w .-]+)+$/.test(target) ||
-				/\.(?:md|txt|json|csv|html?|pdf|png|jpe?g|svg|xml|ya?ml|toml|log|sh|ts|js|py|go|rs)\b/i.test(
+				/^[\w.-]+(?:\s+[\w.-]+)*\.(?:md|txt|json|csv|html?|pdf|png|jpe?g|svg|xml|ya?ml|toml|log|sh|ts|js|py|go|rs)$/i.test(
 					target
 				);
 			const isFileTarget =
@@ -2032,10 +2060,23 @@ export function toolsForTurn(
 	const names = new Set(CORE_TOOL_NAMES);
 	const allowedCapabilityText = currentUserText.replace(DENIED_CAPABILITY, '');
 	const recentIntentText = withoutQuotedData(recentUserText.replace(DENIED_CAPABILITY, ''));
+	const browserIntentText = withoutQuotedData(
+		recentUserText.replace(DENIED_CAPABILITY, ''),
+		false,
+		true
+	);
 	const fileRequestText = withoutQuotedData(allowedCapabilityText, true);
 	const machineRequestText = withoutQuotedData(allowedCapabilityText);
 	if (EXTENDED_HINT.test(recentIntentText)) {
 		for (const tool of EXTENDED_TOOLS) names.add(tool.function.name);
+	}
+	const browserText = `${recentIntentText}\n${browserIntentText}`;
+	if (
+		BROWSER_HINT.test(recentIntentText) ||
+		BROWSER_HINT.test(browserIntentText) ||
+		(WEB_URL_HINT.test(browserText) && !HTTP_CLIENT_HINT.test(browserText))
+	) {
+		names.add('browse');
 	}
 	if (FILE_HINT.test(fileRequestText)) {
 		for (const tool of FILE_TOOLS) names.add(tool.function.name);

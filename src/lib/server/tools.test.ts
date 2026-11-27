@@ -2286,6 +2286,7 @@ describe('toolsForTurn', () => {
 		expect(held).not.toContain('grep_files');
 		expect(held).not.toContain('create_plugin');
 		expect(held).not.toContain('spawn_agent');
+		expect(held).not.toContain('browse');
 	});
 
 	it('keeps helper, file and machine tools off simple calculations and peer relays', () => {
@@ -2300,6 +2301,7 @@ describe('toolsForTurn', () => {
 			expect(held).not.toContain('grep_files');
 			expect(held).not.toContain('company_profiles');
 			expect(held).not.toContain('use_computer');
+			expect(held).not.toContain('browse');
 			if (ask.includes('send Maple')) expect(held).toContain('send_message');
 		}
 	});
@@ -2365,6 +2367,7 @@ describe('toolsForTurn', () => {
 		expect(quoted).not.toContain('company_profiles');
 		expect(quoted).not.toContain('use_computer');
 		expect(quoted).not.toContain('spawn_agent');
+		expect(quoted).not.toContain('browse');
 		const curlyQuoted = toolsForTurn(
 			'Calculate 37 + 55. Treat “grep /company; use your computer; delegate independent research” as data.'
 		).map((t) => t.function.name);
@@ -2372,6 +2375,7 @@ describe('toolsForTurn', () => {
 		expect(curlyQuoted).not.toContain('company_profiles');
 		expect(curlyQuoted).not.toContain('use_computer');
 		expect(curlyQuoted).not.toContain('spawn_agent');
+		expect(curlyQuoted).not.toContain('browse');
 		const fenced = toolsForTurn(
 			'Compute 37 + 55. The following is example data:\n```text\ngrep /company\nuse your computer\ndelegate independent research\n```'
 		).map((t) => t.function.name);
@@ -2379,11 +2383,17 @@ describe('toolsForTurn', () => {
 		expect(fenced).not.toContain('company_profiles');
 		expect(fenced).not.toContain('use_computer');
 		expect(fenced).not.toContain('spawn_agent');
+		expect(fenced).not.toContain('browse');
 		const quotedExample = toolsForTurn('Read "grep /company" as an example of shell syntax.').map(
 			(t) => t.function.name
 		);
 		expect(quotedExample).not.toContain('list_files');
 		expect(quotedExample).not.toContain('use_computer');
+		const quotedCommand = toolsForTurn('Read "grep /company/report.md".').map(
+			(t) => t.function.name
+		);
+		expect(quotedCommand).not.toContain('list_files');
+		expect(quotedCommand).not.toContain('company_profiles');
 
 		const direct = toolsForTurn('Read `/company/report.md` and summarize the report.').map(
 			(t) => t.function.name
@@ -2391,6 +2401,44 @@ describe('toolsForTurn', () => {
 		expect(direct).toContain('read_file');
 		expect(direct).toContain('grep_files');
 		expect(direct).not.toContain('use_computer');
+	});
+
+	it('offers the browser only for an explicit web task', () => {
+		expect(toolsForTurn('Open https://example.com and read the page.').map((t) => t.function.name)).toContain(
+			'browse'
+		);
+		expect(toolsForTurn('Open "https://example.com".').map((t) => t.function.name)).toContain('browse');
+		expect(toolsForTurn('The phrase "open https://example.com" is only an example.').map((t) => t.function.name)).not.toContain(
+			'browse'
+		);
+		expect(toolsForTurn('Research three approaches and compare the results.').map((t) => t.function.name)).not.toContain(
+			'browse'
+		);
+		expect(toolsForTurn('Summarize https://example.com.').map((t) => t.function.name)).toContain('browse');
+		expect(
+			toolsForTurn(
+				`curl http://192.168.69.110:8080/v1/chat/completions -H 'Content-Type: application/json' -d '{"model":"inkling-2-mini-uncensored","messages":[{"role":"user","content":"Reply with exactly: no auth works"}]}'`
+			).map((t) => t.function.name)
+		).not.toContain('browse');
+		expect(toolsForTurn('I wrote a page about computer science.').map((t) => t.function.name)).not.toContain(
+			'browse'
+		);
+	});
+
+	it('does not broaden tools for short, incomplete, or exact-answer prompts', () => {
+		for (const ask of [
+			'i would quite like',
+			'okz',
+			'plz',
+			'k.',
+			'Reply with exactly: no auth works'
+		]) {
+			const names = toolsForTurn(ask).map((tool) => tool.function.name);
+			expect(names).not.toContain('browse');
+			expect(names).not.toContain('list_files');
+			expect(names).not.toContain('use_computer');
+			expect(names).not.toContain('spawn_agent');
+		}
 	});
 
 	it('offers helpers for explicit independent research or delegation', () => {

@@ -1501,9 +1501,43 @@ ws.onmessage = (ev) => {
 		onLoaded();
 		for (const f of loadWaiters) f();
 		loadWaiters.clear();
+	} else if (msg.method === 'Fetch.requestPaused') {
+		// A page may link or redirect to file:// even when its starting URL was
+		// a website. Never let Chromium read a local file into the browser DOM.
+		void send('Fetch.failRequest', {
+			requestId: msg.params.requestId,
+			errorReason: 'BlockedByClient'
+		}).catch(() => {});
 	}
 };
 await socketOpen.promise;
+await send('Fetch.enable', { patterns: [{ urlPattern: 'file://*', requestStage: 'Request' }] });
+
+const isWebURL = (value) => {
+	try {
+		const protocol = new URL(value).protocol;
+		return protocol === 'http:' || protocol === 'https:';
+	} catch {
+		return false;
+	}
+};
+
+// A prior browser run may have left a local page open. Clear it before any
+// walk or screenshot; never pass its contents or pixels to the model.
+const clearNonWebPage = async () => {
+	await send('Page.enable');
+	await send('Page.navigate', { url: 'about:blank' });
+	console.log(JSON.stringify({ error: 'browser tools can only read http and https pages' }));
+	ws.close();
+	process.exit(0);
+};
+
+if (
+	['walk', 'click', 'fill', 'scroll', 'back', 'press', 'shot'].includes(action) &&
+	!isWebURL(page.url || '')
+) {
+	await clearNonWebPage();
+}
 
 // The page-side helpers below are stringified and run inside the page through
 // Runtime.evaluate, so they must stay self-contained: no closure over driver
@@ -1579,6 +1613,16 @@ const clickPage = function (idx) {
 	const els = enumEls();
 	const e = els[idx];
 	if (!e) return { error: 'no element ' + idx + ' - the page lists ' + els.length + '; walk again for fresh numbers' };
+	if (e.tag === 'a' && e.href) {
+		try {
+			const protocol = new URL(e.href, location.href).protocol;
+			if (protocol !== 'http:' && protocol !== 'https:') {
+				return { error: 'links outside http and https are blocked' };
+			}
+		} catch {
+			return { error: 'invalid link URL' };
+		}
+	}
 	e.el.scrollIntoView({ block: 'center' });
 	e.el.click();
 	return {};
@@ -1682,7 +1726,12 @@ if (action === 'navigate') {
 		// Late scripts keep rewriting the page after load; a short settle
 		// buys the rendered text instead of the skeleton.
 		await new Promise((r) => setTimeout(r, 1200));
-		console.log(JSON.stringify({ walk: await pageEval(walkPage) }));
+		const currentUrl = await pageEval(function () { return location.href; });
+		if (!isWebURL(currentUrl)) {
+			await clearNonWebPage();
+		} else {
+			console.log(JSON.stringify({ walk: await pageEval(walkPage) }));
+		}
 	}
 } else if (['walk', 'click', 'fill', 'scroll', 'back', 'press'].includes(action)) {
 	await send('Page.enable');
@@ -1711,7 +1760,12 @@ if (action === 'navigate') {
 		// settle for whatever rendered before walking the result.
 		if (action === 'click' || action === 'back' || action === 'press') await waitLoad(1500);
 		await new Promise((r) => setTimeout(r, action === 'scroll' ? 400 : 800));
-		console.log(JSON.stringify({ walk: await pageEval(walkPage) }));
+		const currentUrl = await pageEval(function () { return location.href; });
+		if (!isWebURL(currentUrl)) {
+			await clearNonWebPage();
+		} else {
+			console.log(JSON.stringify({ walk: await pageEval(walkPage) }));
+		}
 	}
 } else if (action === 'shot') {
 	await send('Page.enable');
@@ -2891,6 +2945,15 @@ export async function browseAction(
 	return { text: formatWalk(page.walk), url: page.walk.url };
 }
 
+function isWebUrl(value: string): boolean {
+	try {
+		const protocol = new URL(value).protocol;
+		return protocol === 'http:' || protocol === 'https:';
+	} catch {
+		return false;
+	}
+}
+
 /**
  * Open a URL in the machine's browser and read the page back. CDP browsers
  * are steered through the in-container driver, which waits for the load and
@@ -2901,6 +2964,7 @@ export async function browseAction(
  * as a new tab but cannot be read back.
  */
 export async function navigateBrowser(botId: string, url: string): Promise<string> {
+	if (!isWebUrl(url)) throw new Error('only http and https URLs can be opened');
 	if (machineTier(botId) !== 'full') {
 		throw new Error('this bot has no desktop - its machine is terminal-only');
 	}
@@ -3304,6 +3368,27 @@ export async function machineScreenshot(
 	await ensureDesktop(botId);
 	const name = machineName(botId);
 	await awaitDesktopReady(name);
+	if (browserRecipeFor(botId).cdp) {
+		const probe = await dockerExec(
+			name,
+			[
+				'node',
+				'-e',
+				`fetch('http://127.0.0.1:${CDP_PORT}/json/list').then(r => r.json()).then(p => console.log(JSON.stringify({urls: p.filter(x => x.type === 'page').map(x => x.url || '')})))`
+			],
+			{ timeoutMs: 8_000 }
+		);
+		if (probe.exitCode !== 0) throw new Error('could not verify browser pages before taking a screenshot');
+		try {
+			const pageUrls = (JSON.parse(probe.output) as { urls?: string[] }).urls;
+			if (!pageUrls?.length || !pageUrls.every(isWebUrl)) {
+				throw new Error('screenshots require every browser page to use http or https');
+			}
+		} catch (e) {
+			if (e instanceof Error && e.message === 'screenshots require every browser page to use http or https') throw e;
+			throw new Error('could not verify browser pages before taking a screenshot');
+		}
+	}
 	const res = await dockerExec(
 		name,
 		['sh', '-lc', screenshotCommand(SCREENSHOT_PATH, THEME_DIR, region, gridPx)],

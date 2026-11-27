@@ -1067,6 +1067,7 @@ describe('runBotTurn', () => {
 	});
 
 	it('delegates web work to the browser sub-agent instead of the computer one', async () => {
+		addMessage(conv.id, 'user', 'Read https://example.com and report the headline.');
 		vi.mocked(navigateBrowser).mockResolvedValue('Title: Example\n\nheadline text');
 		vi.mocked(streamChat)
 			// Main loop: the bot asks for web work.
