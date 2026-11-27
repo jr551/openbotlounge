@@ -102,6 +102,7 @@ describe('turn budgets', () => {
 
 	afterEach(() => {
 		vi.useRealTimers();
+		vi.restoreAllMocks();
 	});
 
 	it('stops at config.maxTurnsPerTask while the model keeps calling tools', async () => {
@@ -196,20 +197,17 @@ describe('turn budgets', () => {
 	});
 
 	it('stops mid-step when the turn outlives config.taskTimeoutMs', async () => {
-		// A step that never answers is cut off by the turn's own clock rather
-		// than running to the provider timeout. The deadline is the code's own
-		// AbortSignal.timeout, which fake timers cannot drive, so the budget is
-		// set to 1ms and the mock ends when the signal actually fires.
-		config.taskTimeoutMs = 1;
-		vi.mocked(streamChat).mockImplementation((opts) =>
+		// A step that never answers is cut off by the turn's own deadline. A
+		// controlled signal keeps this race deterministic on busy CI workers:
+		// first yield visible text, then abort while the model is still streaming.
+		config.taskTimeoutMs = 10_000;
+		const deadline = new AbortController();
+		vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
+		vi.mocked(streamChat).mockImplementation(() =>
 			(async function* (): AsyncGenerator<string, StreamResult> {
 				yield 'partial';
-				await new Promise((_resolve, reject) => {
-					opts.signal?.addEventListener('abort', () =>
-						reject(new Error('The operation was aborted'))
-					);
-				});
-				return { text: 'partial', toolCalls: [] };
+				deadline.abort();
+				throw new Error('The operation was aborted');
 			})()
 		);
 

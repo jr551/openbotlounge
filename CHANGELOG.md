@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.26 — 2026-11-27
+
+### Testing
+
+- The mid-stream timeout test now aborts a controlled deadline only after its first visible token, avoiding a 1ms race on slower CI workers.
+
 ## 0.4.25 — 2026-11-27
 
 ### Fixes
