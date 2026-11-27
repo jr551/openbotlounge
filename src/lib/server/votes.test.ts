@@ -105,6 +105,9 @@ describe('castVote', () => {
 	it('fails the vote once enough noes land that yes cannot reach the bar', () => {
 		const opener = fleetBot();
 		const target = fleetBot();
+		// The opener needs at least one other eligible voter or its yes settles
+		// immediately. Do not rely on bots left by earlier tests in this file.
+		fleetBot();
 		openArchiveVote(opener, target, 'minority test');
 		// Yes needs floor(n/2)+1; the vote fails the moment the noes make that
 		// unreachable, which is n - needed + 1 ballots against.

@@ -988,6 +988,7 @@ export function stripSelfPrefix(text: string, name: string): string {
 const DELEGATE_STOPWORDS = new Set(
 	(
 		'about after again against all almost alone along already also although always among ' +
+		'action actions answer answered answering ' +
 		'another any anyone anything are around back because become been before begin behind ' +
 		'being below beside best better between beyond both bring came cannot come could does ' +
 		'doing done down during each either else enough even ever every everyone everything ' +
@@ -1001,7 +1002,12 @@ const DELEGATE_STOPWORDS = new Set(
 		'their theirs them themselves then there these they thing think this those though ' +
 		'three through thus time together too toward under until upon used very want was way ' +
 		'well went were what whatever when where whether which while who whom whose why will ' +
-		'with within without would your yours yourself'
+		'with within without would your yours yourself ' +
+		'calculate calculated calculates calculating compute computed computes computing ' +
+		'describe described describes describing description descriptions example examples ' +
+		'instruction instructions message messages prompt prompts quote quoted quotes quoting ' +
+		'reply replied replies replying respond responded responds responding string strings ' +
+		'treat treated treats treating'
 	).split(' ')
 );
 

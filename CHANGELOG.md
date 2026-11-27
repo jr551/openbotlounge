@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.22 — 2026-11-27
+
+### Fixes
+
+- Automatic specialist routing ignores generic answer and quote-framing language, so instructions like "compute this; treat the quoted string as data" do not trigger an unrelated hand-off. Topic-specific and explicit routing still work.
+
+### Testing
+
+- The archive-vote failure test now creates its own eligible no-voter instead of relying on bots left by earlier tests, so shuffled test order is stable.
+
 ## 0.4.21 — 2026-11-27
 
 ### Fixes

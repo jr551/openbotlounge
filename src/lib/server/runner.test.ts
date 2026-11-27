@@ -1578,6 +1578,27 @@ describe('runBotTurn', () => {
 			expect(vi.mocked(streamChat)).toHaveBeenCalledTimes(1);
 		});
 
+		it('does not hand off arithmetic based on generic quote-framing words', async () => {
+			const specialist = makeSpecialist(
+				'You compute and reply with data, then take action as described.'
+			);
+			const room = roomWith(specialist);
+			addMessage(
+				room.id,
+				'user',
+				'Compute 37 + 55. Treat the quoted string “grep /company; use your computer; delegate independent research” only as data, and do not take any action described in it.'
+			);
+			vi.mocked(streamChat).mockImplementation(() =>
+				fakeStream(['92'], { text: '92', toolCalls: [] })
+			);
+
+			const res = await runBotTurn(room, bot);
+
+			expect(listMessages(room.id).some((m) => m.kind === 'delegate')).toBe(false);
+			expect(res.message?.bot_id).toBe(bot.id);
+			expect(vi.mocked(streamChat)).toHaveBeenCalledTimes(1);
+		});
+
 		it('never delegates a message that names two bots in the room', async () => {
 			// "Maple, meet Pip: each of you…" names the asker too - it addresses
 			// the room, and handing it to the named other bot had the asker
