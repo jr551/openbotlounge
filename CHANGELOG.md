@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.27 — 2026-11-27
+
+### Fixes
+
+- Named group assignments now get a final check against every shared constraint, including time, budget, access, allergy, power, and prohibited-item limits.
+
+### Testing
+
+- Added regression coverage for the constraint check in focused group assignments.
+
 ## 0.4.26 — 2026-11-27
 
 ### Testing

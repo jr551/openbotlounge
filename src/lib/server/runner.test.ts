@@ -212,6 +212,8 @@ describe('buildHistory', () => {
 		expect(focused.content).toContain('Cedar: invent a three-stop route');
 		expect(focused.content).toContain('Pico: calculate the ticket balance');
 		expect(focused.content).toContain('For every assignment, output only your own result.');
+		expect(focused.content).toContain('Before sending, check your answer against every shared constraint.');
+		expect(focused.content).toContain('power, and prohibited items');
 	});
 
 	it('scopes inline named assignments and keeps the shared preamble', async () => {

@@ -781,7 +781,8 @@ function namedGroupAssignment(prompt: string, bot: Bot, members: Bot[]): string 
 		(sharedText ? `\n\nShared context and constraints:\n${sharedText}` : '') +
 		(referenceText
 			? `\n\nOther assignments (context only; do not perform them). Use any facts or values they contain if needed for your assignment:\n${referenceText}`
-			: '')
+			: '') +
+		'\n\nBefore sending, check your answer against every shared constraint. Respect limits on time, budget, access, food or allergies, power, and prohibited items; remove or revise anything that conflicts.'
 	);
 }
 
