@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.24 — 2026-11-27
+
+### Fixes
+
+- Short acknowledgements now have a 12-word reply cap; bots acknowledge `okz`/`k.` without probing and ask one brief question for `plz` or another incomplete request.
+- Bots no longer add unsolicited explanations about pending tasks, threads or missing context when responding to fragments.
+
+### Testing
+
+- Strengthened system-prompt regression coverage with the exact live-tested acknowledgement examples.
+
 ## 0.4.23 — 2026-11-27
 
 ### Fixes

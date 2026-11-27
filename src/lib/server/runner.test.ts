@@ -144,11 +144,11 @@ describe('buildHistory', () => {
 		const conv = createConversation([bot.id], 'direct');
 		const system = (await buildHistory(conv, bot))[0].content;
 
-		expect(system).toContain('If a message is only an acknowledgement or an incomplete fragment');
-		expect(system).toContain('briefly acknowledge it or ask one short clarifying question');
-		expect(system).toContain('do not guess a missing request');
-		expect(system).toContain('imply the human is in the wrong chat');
-		expect(system).toContain('or start work');
+		expect(system).toContain('If the latest message is only a short acknowledgement or fragment');
+		expect(system).toContain('keep the reply under 12 words');
+		expect(system).toContain('Briefly acknowledge "okz" or "k." without a follow-up');
+		expect(system).toContain('for "plz" or another incomplete request, ask one short question');
+		expect(system).toContain('Do not explain that nothing is pending, there is no thread');
 	});
 
 	it('prefixes other bots’ messages with their name in group chats', async () => {
