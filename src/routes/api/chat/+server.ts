@@ -204,7 +204,12 @@ export const POST: RequestHandler = async ({ request }) => {
 			const task = startTask(conv, bot, prompt, {
 				think,
 				ready: hooksReady,
-				noTools: regenerate
+				noTools: regenerate,
+				// Selecting a specific bot is an explicit routing choice. The bot
+				// may still use send_message when asked, but the app should not
+				// silently replace it with an automatically delegated responder.
+				// A regeneration is text-only and must not hand work to a peer either.
+				noAutoDelegate: Boolean(botId) || regenerate
 			});
 			return { id: task.id, bot_id: task.bot_id };
 		})

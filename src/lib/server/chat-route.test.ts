@@ -29,7 +29,10 @@ vi.mock('$lib/server/steering', () => ({
 // test file in the shared DATA_DIR would otherwise wake a real sandbox here.
 vi.mock('$lib/server/plugins', async (importOriginal) => ({
 	...(await importOriginal<typeof import('$lib/server/plugins')>()),
-	runHooks: vi.fn(async (_point: string, _bot: string, payload: { message: string }) => payload.message),
+	runHooks: vi.fn(async (_point: string, _bot: string, payload: { message: string }) => ({
+		message: payload.message,
+		ok: true
+	})),
 	// The plugins route's review gate runs the sandbox self-test, which needs
 	// a container the tests do not have.
 	selfTestPlugin: vi.fn(async () => ({ ok: true, output: 'self-test ok' })),
@@ -140,6 +143,7 @@ describe('POST /api/chat validation', () => {
 			await status(() => send({ conversation_id: id, regenerate: true, message_id: reply.id }))
 		).toBe(202);
 		expect(vi.mocked(startTask).mock.lastCall?.[3]?.noTools).toBe(true);
+		expect(vi.mocked(startTask).mock.lastCall?.[3]?.noAutoDelegate).toBe(true);
 	});
 
 	it('refuses to post into a private conversation', async () => {
@@ -164,6 +168,35 @@ describe('POST /api/chat validation', () => {
 		);
 		expect(message).toContain('outsider');
 		expect(listMessages(id)).toHaveLength(0);
+	});
+
+	it('keeps an explicitly selected group responder from silent auto-delegation', async () => {
+		const selected = createBot({ name: 'selected', persona: '', avatar: '', color: '', model: '', badge: '' });
+		const peer = createBot({ name: 'peer', persona: '', avatar: '', color: '', model: '', badge: '' });
+		const id = createConversation([selected.id, peer.id], 'group').id;
+		vi.mocked(startTask).mockClear();
+
+		const res = await send({ conversation_id: id, bot_id: selected.id, content: 'answer as selected' });
+		const body = (await res.json()) as { tasks: { id: string; bot_id: string }[] };
+
+		expect(body.tasks).toEqual([{ id: 'task-1', bot_id: selected.id }]);
+		expect(vi.mocked(startTask).mock.lastCall?.[3]?.noAutoDelegate).toBe(true);
+	});
+
+	it('keeps automatic specialization available to an ordinary group broadcast', async () => {
+		const first = createBot({ name: 'first', persona: '', avatar: '', color: '', model: '', badge: '' });
+		const second = createBot({ name: 'second', persona: '', avatar: '', color: '', model: '', badge: '' });
+		const id = createConversation([first.id, second.id], 'group').id;
+		vi.mocked(startTask).mockClear();
+
+		const res = await send({ conversation_id: id, content: 'answer as a group' });
+		const body = (await res.json()) as { tasks: { id: string; bot_id: string }[] };
+
+		expect(new Set(body.tasks.map((task) => task.bot_id))).toEqual(new Set([first.id, second.id]));
+		expect(vi.mocked(startTask).mock.calls.map((call) => call[3]?.noAutoDelegate)).toEqual([
+			false,
+			false
+		]);
 	});
 
 	it('steers a running task instead of starting a new one when the message belongs to it', async () => {

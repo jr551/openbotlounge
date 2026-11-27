@@ -501,7 +501,10 @@ export async function buildHistory(
 			`\n\nYour name is ${bot.name}. When the human gives named assignments, do only ` +
 			`the one for ${bot.name}; do not answer another bot's assignment or ask ` +
 			`which bot you are. When the message is for the whole group, answer the ` +
-			`shared request as ${bot.name}.`;
+			`shared request as ${bot.name}. When combining numeric claims from other ` +
+			`bots, preserve the exact values and check which condition triggers first ` +
+			`in the stated direction; if claims conflict, surface the conflict instead ` +
+			`of saying they agree.`;
 	}
 	// Only the newest maxHistory rows are ever sent, so only those are read.
 	const rows = listContextMessages(conv.id, config.maxHistory);
@@ -1162,6 +1165,8 @@ export async function runBotTurn(
 		model?: string;
 		/** Run without tools - a turn that only has to answer, like a write-up ack. */
 		noTools?: boolean;
+		/** Do not silently hand this explicitly selected bot's turn to a peer. */
+		noAutoDelegate?: boolean;
 		/**
 		 * Called once the turn's session exists, with the channel a mid-task
 		 * message takes to reach the model: queue it and the tool loop hands it
@@ -1211,6 +1216,7 @@ export async function runBotTurn(
 	// has nobody to hand the turn to (see delegateCandidate).
 	const lastRow = listContextMessages(conv.id, 1)[0];
 	if (
+		!opts.noAutoDelegate &&
 		persist &&
 		depth === 0 &&
 		!conv.private &&

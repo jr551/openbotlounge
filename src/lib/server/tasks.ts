@@ -206,6 +206,8 @@ export function startTask(
 		routineId?: string;
 		/** Run the turn with no tools - a rewrite, like a regenerate, must not re-fire side-effects. */
 		noTools?: boolean;
+		/** Keep this explicitly selected responder from being silently replaced. */
+		noAutoDelegate?: boolean;
 	} = {}
 ): Task {
 	const task = createTask(conv.id, bot.id, prompt, undefined, opts.context, opts.routineId);
@@ -309,6 +311,7 @@ export function startTask(
 				preamble: opts.preamble,
 				model: opts.model,
 				noTools: opts.noTools,
+				noAutoDelegate: opts.noAutoDelegate,
 				// The turn's steer channel: while its session is mid-run this
 				// queues a message for the model's next step; once the run settles
 				// it refuses, and steerTask's caller falls back to a fresh task.

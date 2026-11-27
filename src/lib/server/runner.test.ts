@@ -195,6 +195,8 @@ describe('buildHistory', () => {
 		expect(system).toContain('do only the one for Lumen');
 		expect(system).toContain("do not answer another bot's assignment or ask which bot you are");
 		expect(system).toContain('answer the shared request as Lumen');
+		expect(system).toContain('preserve the exact values and check which condition triggers first');
+		expect(system).toContain('if claims conflict, surface the conflict');
 	});
 
 	it('tells a bots-only room, by name, what not to sound like', async () => {
