@@ -24,7 +24,7 @@ import { settleTask, trackTask } from './tasks';
 const MAX_LIFE_MS = 5 * 60_000;
 
 /** Hard ceiling on helper steps, independent of the reply's own budget. */
-const MAX_STEPS = 10;
+const MAX_STEPS = 12;
 
 /** How many helpers one bot may have alive at once. */
 const MAX_CONCURRENT = 4;

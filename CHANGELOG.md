@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.28 — 2026-11-28
+
+### Fixes
+
+- Replaced the chat typing animation and task preview timer with a deterministic, reduced-motion-aware indicator that shows real streamed text without random backtracking.
+- Model-specific routes now apply to one-shot completions, cap output tokens, queue concurrent requests, and use the task timeout unless the route overrides it.
+- Spawned helpers can now use twelve read-only steps instead of ten, matching the live runs that exhausted the previous ceiling.
+- Shuffled tests no longer depend on leftover archive-vote fixtures, and the MCP bridge remains compatible with Node's strip-only TypeScript loader.
+
+### Testing
+
+- Added typing-indicator rendering tests, provider-gate boundary tests, routed one-shot/concurrency/timeout coverage, helper step-limit tests, and a live-data tuning report.
+
 ## 0.4.27 — 2026-11-27
 
 ### Fixes

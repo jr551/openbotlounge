@@ -249,6 +249,33 @@ describe('runSubagent', () => {
 		expect(rows).toHaveLength(4);
 	});
 
+	it('allows a helper to finish on its twelfth step', async () => {
+		let step = 0;
+		vi.mocked(streamChat).mockImplementation(() => {
+			step++;
+			return fakeStream(
+				[],
+				step < 12
+					? { text: '', toolCalls: [toolCall(`lookup-${step}`, 'recall', {})] }
+					: { text: 'finished on step twelve', toolCalls: [] }
+			);
+		});
+
+		expect(await spawn('keep looking')).toBe('finished on step twelve');
+		expect(streamChat).toHaveBeenCalledTimes(12);
+	});
+
+	it('stops a helper that still has no report after twelve steps', async () => {
+		let step = 0;
+		vi.mocked(streamChat).mockImplementation(() => {
+			step++;
+			return fakeStream([], { text: '', toolCalls: [toolCall(`lookup-${step}`, 'recall', {})] });
+		});
+
+		expect(await spawn('loop forever')).toMatch(/12-step limit/);
+		expect(streamChat).toHaveBeenCalledTimes(12);
+	});
+
 	it('dies at its lifetime with whatever it had said so far', async () => {
 		vi.mocked(streamChat)
 			.mockImplementationOnce(() =>
