@@ -84,6 +84,8 @@ describe('castVote', () => {
 	it('archives the target the moment yes exceeds half the fleet', () => {
 		const opener = fleetBot();
 		const target = fleetBot();
+		// A third eligible voter keeps the opener's yes from settling it alone.
+		fleetBot();
 		openArchiveVote(opener, target, 'majority test');
 		// The bar is the smallest whole number over half the eligible fleet;
 		// the opener's ballot is the first yes, so the rest come from the room.

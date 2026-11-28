@@ -1040,6 +1040,149 @@ describe('model-specific provider routes', () => {
 		}
 	});
 
+	it('sends one-shot completions to the routed endpoint too', async () => {
+		const id = 'inkling-one-shot-model';
+		const routeBaseUrl = 'http://192.168.69.110:8080/v1';
+		config.modelRoutes[id] = { baseUrl: routeBaseUrl, apiKey: 'route-key-123' };
+		const routedFetch = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+			new Response(
+				JSON.stringify({
+					choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'local one-shot' } }]
+				}),
+				{ status: 200, headers: { 'content-type': 'application/json' } }
+			)
+		);
+		const defaultFetch = vi.fn(async () => {
+			throw new Error('default provider must not be called for a routed model');
+		});
+		const savedRetries = config.llmRetryAttempts;
+		config.llmRetryAttempts = 0;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
+				String(input).startsWith(routeBaseUrl) ? routedFetch(input, init) : defaultFetch()
+			)
+		);
+		try {
+			const text = await complete(id, [{ role: 'user', content: 'say hi' }]);
+			expect(text).toBe('local one-shot');
+			expect(routedFetch).toHaveBeenCalledTimes(1);
+			expect(defaultFetch).not.toHaveBeenCalled();
+			const [url, init] = routedFetch.mock.calls[0];
+			expect(String(url)).toBe(`${routeBaseUrl}/chat/completions`);
+			expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer route-key-123');
+		} finally {
+			delete config.modelRoutes[id];
+			config.llmRetryAttempts = savedRetries;
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it('caps one-shot output at the routed model limit, including retries', async () => {
+		const id = 'inkling-capped-model';
+		const routeBaseUrl = 'http://192.168.69.110:8080/v1';
+		config.modelRoutes[id] = { baseUrl: routeBaseUrl, apiKey: '', maxTokens: 64 };
+		const routedFetch = vi
+			.fn()
+			.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({ choices: [{ finish_reason: 'length', message: { content: '{"date":' } }] }),
+					{ status: 200, headers: { 'content-type': 'application/json' } }
+				)
+			)
+			.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: '{"date":"Friday"}' } }] }),
+					{ status: 200, headers: { 'content-type': 'application/json' } }
+				)
+			);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+				if (!String(input).startsWith(routeBaseUrl)) throw new Error('default provider must not be called');
+				return routedFetch(input, init);
+			})
+		);
+		try {
+			const text = await complete(
+				id,
+				[{ role: 'user', content: 'return the date as JSON' }],
+				{ effort: 'low', maxTokens: 128 }
+			);
+			expect(text).toBe('{"date":"Friday"}');
+			expect(routedFetch).toHaveBeenCalledTimes(2);
+			expect(JSON.parse(String(routedFetch.mock.calls[0][1]?.body))).toMatchObject({ max_tokens: 64 });
+			expect(JSON.parse(String(routedFetch.mock.calls[1][1]?.body))).toMatchObject({ max_tokens: 64 });
+		} finally {
+			delete config.modelRoutes[id];
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it('queues routed one-shot calls at the configured concurrency limit', async () => {
+		const id = 'inkling-queued-model';
+		const routeBaseUrl = 'http://queued-provider.test/v1';
+		config.modelRoutes[id] = { baseUrl: routeBaseUrl, apiKey: '', concurrency: 1 };
+		const firstResponse = Promise.withResolvers<Response>();
+		let calls = 0;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => {
+				calls++;
+				if (calls === 1) return firstResponse.promise;
+				return new Response(
+					JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: 'second' } }] }),
+					{ status: 200, headers: { 'content-type': 'application/json' } }
+				);
+			})
+		);
+		const savedRetries = config.llmRetryAttempts;
+		config.llmRetryAttempts = 0;
+		try {
+			const first = complete(id, [{ role: 'user', content: 'first' }]);
+			const second = complete(id, [{ role: 'user', content: 'second' }]);
+			await vi.waitFor(() => expect(calls).toBe(1));
+			expect(calls).toBe(1);
+			firstResponse.resolve(
+				new Response(
+					JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: 'first' } }] }),
+					{ status: 200, headers: { 'content-type': 'application/json' } }
+				)
+			);
+			await expect(first).resolves.toBe('first');
+			await expect(second).resolves.toBe('second');
+			expect(calls).toBe(2);
+		} finally {
+			delete config.modelRoutes[id];
+			config.llmRetryAttempts = savedRetries;
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it('uses a routed model timeout instead of the shorter default ceiling', async () => {
+		const id = 'inkling-timeout-model';
+		config.modelRoutes[id] = { baseUrl: 'http://slow-provider.test/v1', apiKey: '', timeoutMs: 25 };
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) =>
+				new Promise<Response>((_resolve, reject) => {
+					const signal = init?.signal;
+					if (signal?.aborted) reject(signal.reason);
+					else signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+				})
+			)
+		);
+		const savedRetries = config.llmRetryAttempts;
+		config.llmRetryAttempts = 0;
+		try {
+			await expect(complete(id, [{ role: 'user', content: 'wait' }])).rejects.toThrow(/timeout|aborted/i);
+		} finally {
+			delete config.modelRoutes[id];
+			config.llmRetryAttempts = savedRetries;
+			vi.unstubAllGlobals();
+		}
+	});
+
 	it('includes configured model IDs in the picker alongside the default provider', async () => {
 		const id = 'inkling-picker-model';
 		config.modelRoutes[id] = { baseUrl: 'http://127.0.0.1:1/v1', apiKey: '' };

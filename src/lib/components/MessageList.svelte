@@ -5,6 +5,7 @@
 	import { nameMentions } from '$lib/name-mentions';
 	import { botQuotesOf, type BotQuote } from '$lib/bot-quotes';
 	import Markdown from './Markdown.svelte';
+	import TypingIndicator from './TypingIndicator.svelte';
 	import Avatar from './Avatar.svelte';
 	import { bloatOf } from '$lib/bloat';
 	import EmojiPicker from './EmojiPicker.svelte';
@@ -1556,7 +1557,7 @@
 							{/if}
 						{:else if streaming}
 							<div class="thinking">
-								<span class="dot"></span><span class="dot"></span><span class="dot"></span>
+								<TypingIndicator compact label={`${bot?.name ?? 'Bot'} is typing`} />
 							</div>
 						{/if}
 						{#if m.image}
@@ -1918,13 +1919,10 @@
 								{#if progressPct !== null}<span class="progresspct">{progressPct}%</span>{/if}
 							</div>
 						{:else if composingText}
-							<!-- Live wire status while the reply streams: the planet keeps
-							     flashing and RX counts the characters as they land. -->
+							<!-- Live wire status while the reply streams: the indicator breathes
+							     and RX counts the characters as they land. -->
 							<div class="thinking wireup">
-								<span class="planet" aria-hidden="true">
-									<span class="planet-core"></span>
-									<span class="planet-ring"></span>
-								</span>
+								<TypingIndicator compact label={`${typingBot.name} is writing`} />
 								<span class="txrx">
 									<span class="tx" title="Prompt tokens sent so far">TX {chat.tokensOutFor(typingBot.id)}</span>
 									<span class="rx" title="Reply characters received so far">RX {composingText.length}</span>
@@ -1940,13 +1938,7 @@
 							<div class="partial"><Markdown source={composingText} /></div>
 						{:else}
 							<div class="thinking">
-								<!-- Waiting on the AI gateway: a little planet that flashes
-								     while the request is in flight, with live TX/RX counters
-								     so the wait reads as a wire, not a stall. -->
-								<span class="planet" aria-hidden="true">
-									<span class="planet-core"></span>
-									<span class="planet-ring"></span>
-								</span>
+								<TypingIndicator label={`${typingBot.name} is typing`} />
 								<span class="txrx">
 									<!-- TX/RX as live wire counters: TX is the prompt tokens the
 									     task has already spent (per completed provider call), RX is
@@ -1955,7 +1947,6 @@
 									<span class="tx" title="Prompt tokens sent so far">TX {chat.tokensOutFor(typingBot.id)}</span>
 									<span class="rx" title="Reply characters received so far">RX {composingText.length || chat.tokensInFor(typingBot.id)}</span>
 								</span>
-								<span class="dot"></span><span class="dot"></span><span class="dot"></span>
 							</div>
 						{/if}
 					</div>
@@ -2899,58 +2890,6 @@
 		align-items: center;
 		gap: 0.3rem;
 		padding: 0.35rem 0.15rem;
-	}
-	.dot {
-		width: 7px;
-		height: 7px;
-		border-radius: 50%;
-		background: var(--text-muted);
-		animation: pulse 1.2s infinite ease-in-out;
-	}
-	.dot:nth-child(2) {
-		animation-delay: 0.2s;
-	}
-	.dot:nth-child(3) {
-		animation-delay: 0.4s;
-	}
-	@keyframes pulse {
-		0%,
-		100% {
-			opacity: 0.3;
-		}
-		50% {
-			opacity: 1;
-		}
-	}
-	/* The waiting-on-gateway planet: a small world that flashes while the
-	   request is in flight, with live TX/RX counters beside it. */
-	.planet {
-		position: relative;
-		width: 14px;
-		height: 14px;
-		flex: none;
-	}
-	.planet-core {
-		position: absolute;
-		inset: 2px;
-		border-radius: 50%;
-		background: #6a8fd8;
-		animation: planetflash 1.6s ease-in-out infinite;
-	}
-	.planet-ring {
-		position: absolute;
-		inset: 0;
-		border-radius: 50%;
-		border: 1px solid rgba(106, 143, 216, 0.4);
-		animation: planetring 1.6s ease-in-out infinite;
-	}
-	@keyframes planetflash {
-		0%, 100% { opacity: 0.4; transform: scale(0.85); }
-		50% { opacity: 1; transform: scale(1); }
-	}
-	@keyframes planetring {
-		0%, 100% { opacity: 0.2; transform: scale(0.9); }
-		50% { opacity: 0.6; transform: scale(1.1); }
 	}
 	.txrx {
 		display: flex;

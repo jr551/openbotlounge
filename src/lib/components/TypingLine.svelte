@@ -1,76 +1,57 @@
 <script lang="ts">
 	/**
-	 * Live model output, typed out the way a person writes: it catches up in
-	 * bursts, sometimes backs up a few characters and rewrites them, and leaves
-	 * a caret blinking at the end.
+	 * The server already streams real deltas. Show the latest tail directly -
+	 * no timer, fake catch-up, random backtracking, or rewritten characters.
 	 */
 	let { text = '' }: { text: string } = $props();
-
-	/** How much of `text` is currently on screen. */
-	let shown = $state(0);
-	let revising = $state(false);
-
-	$effect(() => {
-		const id = setInterval(() => {
-			const target = text.length;
-			if (shown < target) {
-				// Type faster when we are far behind, so long replies still land.
-				shown = Math.min(target, shown + Math.max(2, Math.ceil((target - shown) / 12)));
-			} else if (shown > target) {
-				shown = target;
-			} else if (shown > 24 && Math.random() < 0.05) {
-				// A small "hmm, no" - delete a few characters and rewrite them.
-				shown -= Math.min(5, shown - 1);
-				revising = true;
-				setTimeout(() => (revising = false), 220);
-			}
-		}, 60);
-		return () => clearInterval(id);
-	});
-
-	const visible = $derived(text.slice(Math.max(0, shown - 120), shown));
-	const caughtUp = $derived(shown >= text.length);
+	const tail = $derived(text.slice(-180));
 </script>
 
-<div class="typing" class:revising>
-	<span class="chars">{visible}</span><span class="caret" class:blink={caughtUp}></span>
+<div class="typing-line" aria-hidden="true">
+	<span class="preview">{tail}</span><span class="caret"></span>
 </div>
 
 <style>
-	.typing {
+	.typing-line {
+		display: flex;
+		align-items: center;
+		min-width: 0;
+		margin-top: 0.3rem;
+		color: var(--text-muted, #888);
 		font-family: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Consolas', monospace;
-		font-size: 0.72rem;
-		line-height: 1.45;
-		color: #888;
-		margin-top: 0.25rem;
-		max-height: 3.4rem;
-		overflow: hidden;
-		word-break: break-word;
-		letter-spacing: 0.01em;
+		font-size: 0.68rem;
+		line-height: 1.35;
 	}
-	.typing.revising .chars {
-		text-decoration: line-through;
-		text-decoration-color: rgba(242, 109, 109, 0.7);
+	.preview {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.caret {
-		display: inline-block;
-		width: 0.5em;
+		flex: none;
+		width: 2px;
 		height: 1em;
-		margin-left: 0.08em;
-		background: #888;
-		vertical-align: text-bottom;
-		opacity: 0.9;
+		margin-left: 0.18rem;
+		border-radius: 1px;
+		background: var(--accent, #6a8fd8);
+		animation: caret-blink 1s steps(1, end) infinite;
 	}
-	.caret.blink {
-		animation: caret 1.05s steps(2, end) infinite;
-	}
-	@keyframes caret {
+	@keyframes caret-blink {
 		0%,
-		100% {
+		45% {
 			opacity: 0.9;
 		}
-		50% {
+		55%,
+		100% {
 			opacity: 0.15;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.caret {
+			animation: none;
+			opacity: 0.75;
 		}
 	}
 </style>

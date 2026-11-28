@@ -4,6 +4,10 @@ export interface ModelRoute {
 	apiKey: string;
 	contextWindow?: number;
 	maxTokens?: number;
+	/** Maximum simultaneous requests to this endpoint. Defaults to four. */
+	concurrency?: number;
+	/** Per-request ceiling. Defaults to the task timeout for routed models. */
+	timeoutMs?: number;
 }
 
 function optionalLimit(value: unknown, key: string): number | undefined {
@@ -59,6 +63,8 @@ export function parseModelRoutes(raw: string | undefined): Record<string, ModelR
 		}
 		const contextWindow = optionalLimit(route.contextWindow ?? route.context_window, 'contextWindow');
 		const maxTokens = optionalLimit(route.maxTokens ?? route.max_tokens, 'maxTokens');
+		const concurrency = optionalLimit(route.concurrency, 'concurrency');
+		const timeoutMs = optionalLimit(route.timeoutMs ?? route.timeout_ms, 'timeoutMs');
 		if (contextWindow !== undefined && maxTokens !== undefined && maxTokens > contextWindow) {
 			throw new Error(`LLM_MODEL_ROUTES_JSON route for ${model} maxTokens cannot exceed contextWindow`);
 		}
@@ -66,7 +72,9 @@ export function parseModelRoutes(raw: string | undefined): Record<string, ModelR
 			baseUrl: rawBaseUrl.trim().replace(/\/+$/, ''),
 			apiKey,
 			...(contextWindow !== undefined ? { contextWindow } : {}),
-			...(maxTokens !== undefined ? { maxTokens } : {})
+			...(maxTokens !== undefined ? { maxTokens } : {}),
+			...(concurrency !== undefined ? { concurrency } : {}),
+			...(timeoutMs !== undefined ? { timeoutMs } : {})
 		};
 	}
 	return routes;

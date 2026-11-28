@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseModelRoutes } from './model-routes';
 
 describe('parseModelRoutes', () => {
-	it('maps model IDs to local OpenAI-compatible endpoints and normalizes trailing slashes', () => {
+	it('maps model IDs to local OpenAI-compatible endpoints and normalizes limits', () => {
 		expect(
 			parseModelRoutes(
 				JSON.stringify({
@@ -10,7 +10,9 @@ describe('parseModelRoutes', () => {
 						baseUrl: 'http://192.168.69.110:8080/v1/',
 						apiKey: '',
 						contextWindow: 32_768,
-						maxTokens: 4_096
+						maxTokens: 4_096,
+						concurrency: 4,
+						timeoutMs: 300_000
 					}
 				})
 			)
@@ -19,7 +21,9 @@ describe('parseModelRoutes', () => {
 				baseUrl: 'http://192.168.69.110:8080/v1',
 				apiKey: '',
 				contextWindow: 32_768,
-				maxTokens: 4_096
+				maxTokens: 4_096,
+				concurrency: 4,
+				timeoutMs: 300_000
 			}
 		});
 	});
@@ -34,7 +38,9 @@ describe('parseModelRoutes', () => {
 		'[]',
 		JSON.stringify({ model: { baseUrl: 'ftp://example.test/v1' } }),
 		JSON.stringify({ model: { baseUrl: 'http://user:pass@example.test/v1' } }),
-		JSON.stringify({ model: { baseUrl: 'http://example.test/v1', maxTokens: 5, contextWindow: 4 } })
+		JSON.stringify({ model: { baseUrl: 'http://example.test/v1', maxTokens: 5, contextWindow: 4 } }),
+		JSON.stringify({ model: { baseUrl: 'http://example.test/v1', concurrency: 0 } }),
+		JSON.stringify({ model: { baseUrl: 'http://example.test/v1', timeoutMs: 0 } })
 	])('rejects invalid route configuration %s', (raw) => {
 		expect(() => parseModelRoutes(raw)).toThrow('LLM_MODEL_ROUTES_JSON');
 	});

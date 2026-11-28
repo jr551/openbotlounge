@@ -7,6 +7,7 @@ import { parseOAuthSession, providerConfig, setSetting } from './db';
 import { refreshOpenAiTokens } from './provider-oauth';
 import { providerForBaseUrl } from '../providers';
 import { LOUNGE_PROVIDER_ID, loungeRuntime } from './pi-runtime';
+import { ProviderGate } from './provider-gate';
 
 /** One content part: plain text or an image reference (data URI or URL). */
 export type ContentPart =
@@ -53,9 +54,27 @@ interface ModelEntry {
 const PROVIDER_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS ?? 120_000);
 
 /** Combine the caller's abort signal with a timeout. */
-function signalFor(external?: AbortSignal): AbortSignal {
-	const timeout = AbortSignal.timeout(PROVIDER_TIMEOUT_MS);
+function signalFor(external?: AbortSignal, timeoutMs = PROVIDER_TIMEOUT_MS): AbortSignal {
+	const timeout = AbortSignal.timeout(timeoutMs);
 	return external ? AbortSignal.any([external, timeout]) : timeout;
+}
+
+/** Routed endpoints are shared by every bot that names the same model. */
+const routeGates = new Map<string, ProviderGate>();
+const DEFAULT_ROUTE_CONCURRENCY = 4;
+
+function gateForRoute(route: { baseUrl: string; concurrency?: number }): ProviderGate {
+	let gate = routeGates.get(route.baseUrl);
+	if (!gate) {
+		gate = new ProviderGate(route.concurrency ?? DEFAULT_ROUTE_CONCURRENCY);
+		routeGates.set(route.baseUrl, gate);
+	}
+	return gate;
+}
+
+/** A routed model gets the task's wall-clock budget unless its route says otherwise. */
+function timeoutForRoute(route: { timeoutMs?: number }): number {
+	return route.timeoutMs ?? config.taskTimeoutMs;
 }
 
 /**
@@ -527,9 +546,8 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<string, S
 	// The codex adapter never surfaces the served model, so the SSE body is
 	// teed and read for it; a plain endpoint's adapter reports it itself.
 	const tap = endpoint.oauth ? tapServedModel(fetch) : undefined;
-	const streamOpts = {
+	const baseStreamOpts = {
 		apiKey: endpoint.apiKey || 'unused',
-		signal: signalFor(opts.signal),
 		// The app's effort knob is a thinking level; 'off' sends nothing.
 		reasoning: opts.effort,
 		// Codex only answers over SSE; the websocket transports are for the
@@ -554,7 +572,16 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<string, S
 		let text = '';
 		let yielded = false;
 		let failed: AssistantMessage | undefined;
+		let release: (() => void) | undefined;
 		try {
+			// Queue locally instead of sending a wave of parallel requests that
+			// overwhelms a single local model server. Queue time is covered by the
+			// caller's task signal, not by the per-request provider ceiling.
+			release = routed ? await gateForRoute(routed).acquire(opts.signal) : undefined;
+			const streamOpts = {
+				...baseStreamOpts,
+				signal: signalFor(opts.signal, routed ? timeoutForRoute(routed) : PROVIDER_TIMEOUT_MS)
+			};
 			const stream = endpoint.oauth
 				? streamCodexResponses(
 						model as Model<'openai-codex-responses'>,
@@ -598,6 +625,8 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<string, S
 				errorMessage: e instanceof Error ? e.message : String(e),
 				timestamp: Date.now()
 			};
+		} finally {
+			release?.();
 		}
 
 		if (failed.stopReason === 'aborted' || opts.signal?.aborted) {
@@ -815,7 +844,10 @@ export async function complete(
 		signal?: AbortSignal;
 	} = {}
 ): Promise<string> {
-	const endpoint = await resolveEndpoint();
+	const route = config.modelRoutes[model];
+	const endpoint = route
+		? { baseUrl: route.baseUrl, apiKey: route.apiKey }
+		: await resolveEndpoint();
 	if (endpoint.oauth) {
 		// The Codex backend only streams, so a one-shot answer is a drained one.
 		const gen = streamChat({ model, messages, effort: opts.effort, signal: opts.signal });
@@ -837,11 +869,14 @@ export async function complete(
 	// middle of JSON. Retry truncated answers without the effort knob and with
 	// enough room for reasoning plus a visible answer. A non-reasoner still stops
 	// as soon as its answer is done, so the larger ceiling costs nothing normally.
-	const requestedTokens = opts.maxTokens ?? 4096;
+	const requestedTokens = Math.min(opts.maxTokens ?? 4096, route?.maxTokens ?? Number.POSITIVE_INFINITY);
 	// High-effort police prompts can need substantially more hidden reasoning
 	// than a classifier or one-word probe. The larger budget is used only after
 	// the first attempt reports truncation.
-	const retryTokens = Math.max(requestedTokens, opts.effort === 'high' ? 2048 : 1024);
+	const retryTokens = Math.min(
+		Math.max(requestedTokens, opts.effort === 'high' ? 2048 : 1024),
+		route?.maxTokens ?? Number.POSITIVE_INFINITY
+	);
 	const attempts: { effort?: 'low' | 'high'; maxTokens: number }[] = [
 		{ effort: opts.effort, maxTokens: requestedTokens }
 	];
@@ -852,21 +887,27 @@ export async function complete(
 	}
 	for (let i = 0; i < attempts.length; i++) {
 		const attempt = attempts[i];
-		const res = await fetchWithRetry(`${endpoint.baseUrl}/chat/completions`, {
-			method: 'POST',
-			headers: headers(endpoint.apiKey),
-			// Reasoning models spend part of this on hidden reasoning_content before
-			// the visible answer, so callers that need a compact answer can still hit
-			// the cap before completing it.
-			body: JSON.stringify({
-				model,
-				messages,
-				stream: false,
-				max_tokens: attempt.maxTokens,
-				...(attempt.effort ? { reasoning_effort: attempt.effort } : {})
-			}),
-			signal: signalFor(opts.signal)
-		});
+		const release = route ? await gateForRoute(route).acquire(opts.signal) : undefined;
+		let res: Response;
+		try {
+			res = await fetchWithRetry(`${endpoint.baseUrl}/chat/completions`, {
+				method: 'POST',
+				headers: headers(endpoint.apiKey),
+				// Reasoning models spend part of this on hidden reasoning_content before
+				// the visible answer, so callers that need a compact answer can still hit
+				// the cap before completing it.
+				body: JSON.stringify({
+					model,
+					messages,
+					stream: false,
+					max_tokens: attempt.maxTokens,
+					...(attempt.effort ? { reasoning_effort: attempt.effort } : {})
+				}),
+				signal: signalFor(opts.signal, route ? timeoutForRoute(route) : PROVIDER_TIMEOUT_MS)
+			});
+		} finally {
+			release?.();
+		}
 		if (!res.ok) throw new Error(`Provider ${res.status}`);
 		const data = await res.json();
 		const text = (data.choices?.[0]?.message?.content ?? '').trim();
